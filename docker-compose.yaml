@@ -1,0 +1,9 @@
+services:
+  safeswarm-citytwin:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: safeswarm-citytwin
+    volumes:
+      - ./:/app
+    command: python experiments/run_safety_experiment.py --agents 10 --grid-size 50 --episodes 100 --seed 42
