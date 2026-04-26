@@ -2,7 +2,7 @@
 
 Safety-constrained multi-agent exploration prototype for **smart-city digital twins**.
 
-This repository provides a reproducible Python 3.12 research baseline for feasibility studies suitable for an IEEE-style paper. It implements a 2D city-grid abstraction with optional ingestion of **real city data** from OpenStreetMap (OSM), runtime safety monitoring, and comparative agent strategies.
+This repository provides a reproducible Python 3.12 research baseline for feasibility studies. It implements a 2D city-grid abstraction with optional ingestion of **real city data** from OpenStreetMap (OSM), runtime safety monitoring, and comparative agent strategies.
 
 ## Research Goal
 Evaluate whether runtime safety filtering can improve mission reliability of heterogeneous multi-agent exploration in urban digital twins while preserving acceptable runtime overhead.
@@ -111,4 +111,4 @@ pytest -q
 
 ## Notes for feasibility-paper usage
 - Metrics and artifacts are produced in a publication-friendly folder structure.
-- A markdown report template is generated automatically for direct iteration into IEEE manuscript sections.
+- A markdown report template is generated automatically for direct iteration into   manuscript sections.
