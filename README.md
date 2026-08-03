@@ -2,7 +2,7 @@
 
 A reproducible, safety-constrained multi-agent benchmark for comparing urban exploration and monitoring algorithms on **small, cached real-city snapshots**.
 
-The repository combines the original SafeSwarm runtime-assurance layer with the strongest portable bio-inspired policies from **BioSwarm-Urban-Monitoring**. Every strategy is evaluated on the same city cells, seeds, agent count, battery budget, communication model, and episode length.
+The repository combines the original SafeSwarm runtime-assurance layer with portable bio-inspired and multi-agent policy implementations from **BioSwarm-Urban-Monitoring**. Every strategy is evaluated on the same city cells, seeds, agent count, battery budget, communication model, and episode length.
 
 ## What is included
 
@@ -12,17 +12,20 @@ The repository combines the original SafeSwarm runtime-assurance layer with the 
 - Weighted monitoring targets derived from emergency services, schools, public transport, parks, tourism, shops, and offices.
 - Obstacles and restricted areas derived from buildings, water/wetlands, and industrial or railway land use.
 - Runtime safety enforcement for boundaries, obstacles, restricted zones, collisions, battery return reserve, and prolonged communication loss.
-- Eight comparable strategies:
-  - `RandomAgent`
-  - `GreedyAgent`
-  - `SafetyFilteredGreedy`
-  - `SafeSwarmAgent`
-  - `AntSwarmSafe`
-  - `BeeSwarmSafe`
-  - `PSOSwarmSafe`
-  - `UA-HBAS-Safe`
+- Fifteen comparable strategies:
+  - Classical and SafeSwarm: `RandomAgent`, `GreedyAgent`, `SafetyFilteredGreedy`, `SafeSwarmAgent`
+  - Bio-inspired: `AntSwarmSafe`, `BeeSwarmSafe`, `PSOSwarmSafe`, `UA-HBAS-Safe`
+  - GRPO and established MARL: `GRPO-Safe`, `IPPO-Safe`, `MAPPO-Safe`, `QMIX-Safe`, `MADDPG-Safe`, `HAPPO-Safe`, `MAT-Safe`
 - CSV rankings, experiment manifest, PNG figures, and a self-contained HTML report.
 - Unit tests and GitHub Actions validation.
+
+## GRPO and MARL implementations
+
+`GRPO-Safe` ports the group-relative behavior selection used in BioSwarm into the CityTwin environment. It scores a group of high-level behaviors, normalizes them relative to the group mean and standard deviation, samples a behavior with a softmax policy, and then selects a city-grid action through the SafeSwarm runtime monitor.
+
+The repository also includes executable NumPy policy implementations for IPPO, MAPPO, QMIX, MADDPG, HAPPO, and MAT. They preserve the characteristic decision structure of each method—independent actors, centralized team context, monotonic value decomposition, continuous-actor-inspired movement, heterogeneous sequential roles, and attention-based coordination—while sharing the same discrete grid interface and safety filter.
+
+These entries are **lightweight inference/benchmark implementations**, not claims of reproducing the complete neural training stacks from the original papers. Their purpose is to provide transparent, deterministic, directly comparable execution baselines. Optional JSON policy parameters can be loaded through `model_path` for fitted or tuned runs.
 
 ## Real-city benchmark
 
@@ -139,7 +142,7 @@ pytest -q
 ```text
 configs/                    Multi-city benchmark configuration
 experiments/                Single-city and multi-city runners
-src/agents/                 Baselines, SafeSwarm, BioSwarm policies, registry
+src/agents/                 SafeSwarm, BioSwarm, GRPO and MARL policies
 src/environment/            City ingestion, cache, and digital-twin simulation
 src/evaluation/             Metrics and ranking
 src/safety/                 Runtime safety rules and monitor
