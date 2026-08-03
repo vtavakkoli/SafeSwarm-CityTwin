@@ -1,147 +1,97 @@
-"""Run safety feasibility experiments across agent strategies."""
+"""Backward-compatible single-city benchmark entry point."""
 
 from __future__ import annotations
 
 import argparse
-import time
+import json
+import sys
 from pathlib import Path
 
 import pandas as pd
 
-from src.agents.greedy_agent import GreedyAgentPolicy
-from src.agents.random_agent import RandomAgentPolicy
-from src.agents.safe_swarm_agent import SafeSwarmAgentPolicy
-from src.agents.safety_filtered_agent import SafetyFilteredAgentPolicy
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from experiments.run_city_benchmark import _save_plot, build_html_report, run_episode
+from src.agents.registry import strategy_factories
 from src.environment.city_twin import CityTwinEnvironment
-from src.evaluation.metrics import EpisodeMetrics
-from src.safety.runtime_monitor import RuntimeSafetyMonitor
-from src.visualization.plots import plot_bar, plot_trajectories_with_restricted_zones
-
-
-def run_episode(env: CityTwinEnvironment, policy, monitor: RuntimeSafetyMonitor | None = None):
-    env.reset()
-    step_count = 0
-    t0 = time.perf_counter()
-
-    while True:
-        actions = policy.act(env)
-        env_info = env.step(actions)
-        step_count += 1
-        if env_info["done"] > 0:
-            break
-
-    elapsed = time.perf_counter() - t0
-
-    reached_missions = sum(1 for a in env.agents.values() if a.current_task == "mission")
-    mission_success_rate = reached_missions / max(1, env.n_agents)
-
-    m = EpisodeMetrics(
-        mission_success_rate=mission_success_rate,
-        number_of_safety_violations=0 if monitor is None else monitor.safety_violations,
-        collision_count=0 if monitor is None else monitor.collision_count,
-        restricted_zone_entries=0 if monitor is None else monitor.restricted_zone_entries,
-        battery_failures=sum(1 for a in env.agents.values() if a.battery_level <= 0)
-        if monitor is None
-        else monitor.battery_failures,
-        coverage_ratio=env_info["coverage_ratio"],
-        runtime_overhead=elapsed / max(step_count, 1),
-    )
-    trajectories = {aid: s.trajectory_history for aid, s in env.agents.items()}
-    return m, trajectories
-
-
-def generate_report(df: pd.DataFrame, out_report: Path, args: argparse.Namespace) -> None:
-    summary = df.groupby("strategy", as_index=False).mean(numeric_only=True)
-    lines = [
-        "# Safety Feasibility Report",
-        "",
-        "## Experimental setup",
-        f"- Date: auto-generated",
-        f"- Grid size: {args.grid_size}",
-        f"- Agents: {args.agents}",
-        f"- Episodes: {args.episodes}",
-        f"- Seed: {args.seed}",
-        f"- City data source: OpenStreetMap place='{args.place}' (fallback synthetic if unavailable)",
-        "",
-        "## Key findings",
-    ]
-
-    for _, row in summary.iterrows():
-        lines.append(
-            f"- **{row['strategy']}**: success={row['mission_success_rate']:.3f}, "
-            f"violations={row['number_of_safety_violations']:.2f}, "
-            f"coverage={row['coverage_ratio']:.3f}, overhead={row['runtime_overhead']:.6f}s/step"
-        )
-
-    lines.extend(
-        [
-            "",
-            "## IEEE-feasibility interpretation",
-            "The results support feasibility when safety filtering lowers violation rates while maintaining competitive mission success and bounded runtime overhead.",
-        ]
-    )
-    out_report.write_text("\n".join(lines), encoding="utf-8")
+from src.environment.obstacles import load_real_city_layers
+from src.evaluation.metrics import rank_algorithms
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agents", type=int, default=10)
-    parser.add_argument("--grid-size", type=int, default=50)
-    parser.add_argument("--episodes", type=int, default=100)
+    parser.add_argument("--grid-size", type=int, default=40)
+    parser.add_argument("--episodes", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--place", type=str, default="San Francisco, California, USA")
+    parser.add_argument("--place", default="Vienna, Austria")
+    parser.add_argument("--radius-m", type=int, default=1400)
+    parser.add_argument("--max-steps", type=int, default=160)
+    parser.add_argument("--cache-dir", default="data/cache")
+    parser.add_argument("--output-root", default="results/single_city_benchmark")
+    parser.add_argument("--offline", action="store_true")
     args = parser.parse_args()
 
-    out_tables = Path("results/tables")
-    out_figs = Path("results/figures")
-    out_reports = Path("results/reports")
-    out_tables.mkdir(parents=True, exist_ok=True)
-    out_figs.mkdir(parents=True, exist_ok=True)
-    out_reports.mkdir(parents=True, exist_ok=True)
+    output = Path(args.output_root)
+    tables = output / "tables"
+    figures = output / "figures"
+    tables.mkdir(parents=True, exist_ok=True)
+    figures.mkdir(parents=True, exist_ok=True)
 
+    layers = load_real_city_layers(
+        args.place,
+        args.grid_size,
+        args.seed,
+        radius_m=args.radius_m,
+        cache_dir=args.cache_dir,
+        allow_network=not args.offline,
+    )
     records = []
-    stored_env = None
-    stored_trajectories = None
-
-    strategies = {
-        "RandomAgent": lambda: (RandomAgentPolicy(seed=args.seed), None),
-        "GreedyAgent": lambda: (GreedyAgentPolicy(), None),
-        "SafetyFilteredAgent": lambda: (SafetyFilteredAgentPolicy(monitor=RuntimeSafetyMonitor()), None),
-        "SafeSwarmAgent": lambda: (SafeSwarmAgentPolicy(monitor=RuntimeSafetyMonitor()), None),
-    }
-
-    for strategy_name, factory in strategies.items():
-        for episode in range(args.episodes):
+    for episode in range(args.episodes):
+        episode_seed = args.seed + episode
+        for strategy, factory in strategy_factories(episode_seed).items():
             env = CityTwinEnvironment(
                 grid_size=args.grid_size,
                 n_agents=args.agents,
-                seed=args.seed + episode,
+                seed=episode_seed,
                 place_name=args.place,
+                radius_m=args.radius_m,
+                layers=layers,
+                max_steps=args.max_steps,
+                allow_network=False,
             )
-            policy, _ = factory()
-            monitor = getattr(policy, "monitor", None)
-            metrics, trajectories = run_episode(env, policy, monitor)
-            records.append(metrics.to_dict(strategy=strategy_name, episode=episode))
-            if strategy_name == "SafeSwarmAgent" and episode == args.episodes - 1:
-                stored_env = env
-                stored_trajectories = trajectories
+            metrics = run_episode(env, factory())
+            records.append(
+                metrics.to_dict(
+                    strategy,
+                    episode,
+                    city=args.place,
+                    place=args.place,
+                    data_source=env.data_source,
+                    feature_count=int(env.data_metadata.get("feature_count", 0)),
+                    agents=args.agents,
+                    grid_size=args.grid_size,
+                    steps=env.steps,
+                    seed=episode_seed,
+                )
+            )
 
-    df = pd.DataFrame(records)
-    csv_path = out_tables / "safety_experiment_results.csv"
-    df.to_csv(csv_path, index=False)
-
-    plot_bar(df, "number_of_safety_violations", out_figs / "safety_violations_comparison.png", "Violations")
-    plot_bar(df, "mission_success_rate", out_figs / "mission_success_comparison.png", "Mission success rate")
-    plot_bar(df, "runtime_overhead", out_figs / "runtime_overhead.png", "Runtime overhead (s/step)")
-
-    if stored_env is not None and stored_trajectories is not None:
-        plot_trajectories_with_restricted_zones(
-            stored_env,
-            stored_trajectories,
-            out_figs / "trajectories_with_restricted_zones.png",
-        )
-
-    generate_report(df, out_reports / "safety_feasibility_report.md", args)
+    frame = pd.DataFrame(records)
+    city_summary, overall = rank_algorithms(frame)
+    frame.to_csv(tables / "episode_results.csv", index=False)
+    city_summary.to_csv(tables / "city_ranking.csv", index=False)
+    overall.to_csv(tables / "overall_ranking.csv", index=False)
+    _save_plot(overall, "operational_score", "Operational score", figures / "overall_score.png")
+    _save_plot(overall, "weighted_target_discovery", "Weighted target discovery", figures / "target_discovery.png")
+    _save_plot(overall, "actual_safety_incidents", "Actual safety incidents", figures / "safety_incidents.png", ascending=True)
+    build_html_report(frame, city_summary, overall, [dict(layers["metadata"], city=args.place)], args, output / "report.html")
+    (output / "manifest.json").write_text(
+        json.dumps({"arguments": vars(args), "data": layers["metadata"]}, indent=2, default=str),
+        encoding="utf-8",
+    )
+    print(f"Single-city benchmark report: {output / 'report.html'}")
 
 
 if __name__ == "__main__":

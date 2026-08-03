@@ -1,0 +1,7 @@
+{
+  "cities": [
+    {"name": "Vienna", "place": "Vienna, Austria", "radius_m": 1400},
+    {"name": "London", "place": "London, United Kingdom", "radius_m": 1400},
+    {"name": "San Francisco", "place": "San Francisco, California, USA", "radius_m": 1400}
+  ]
+}

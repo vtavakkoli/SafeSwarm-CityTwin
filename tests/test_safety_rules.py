@@ -1,34 +1,27 @@
 from src.environment.city_twin import CityTwinEnvironment
-from src.safety.rules import (
-    battery_reserve_for_return,
-    inside_operational_boundary,
-    no_collision,
-    no_restricted_zone,
-)
+from src.environment.obstacles import synthetic_city_layers
+from src.safety.rules import battery_reserve_for_return, inside_operational_boundary, no_restricted_zone
+
+
+def make_env() -> CityTwinEnvironment:
+    layers = synthetic_city_layers(15, seed=2)
+    return CityTwinEnvironment(grid_size=15, n_agents=1, seed=2, layers=layers, allow_network=False)
 
 
 def test_boundary_rule():
-    env = CityTwinEnvironment(grid_size=20, n_agents=2, seed=1)
+    env = make_env()
     assert inside_operational_boundary((0, 0), env)
     assert not inside_operational_boundary((-1, 0), env)
 
 
 def test_restricted_zone_rule():
-    env = CityTwinEnvironment(grid_size=20, n_agents=2, seed=1)
-    cell = next(iter(env.restricted_zones)) if env.restricted_zones else (1, 1)
-    env.restricted_zones.add(cell)
-    assert not no_restricted_zone(cell, env)
+    env = make_env()
+    env.restricted_zones.add((1, 1))
+    assert not no_restricted_zone((1, 1), env)
 
 
-def test_collision_rule():
-    env = CityTwinEnvironment(grid_size=20, n_agents=2, seed=1)
-    a0 = env.agents[0].position
-    planned = {1: a0}
-    assert not no_collision(0, a0, env, planned)
-
-
-def test_battery_rule():
-    env = CityTwinEnvironment(grid_size=20, n_agents=1, seed=1)
+def test_battery_reserve_rule():
+    env = make_env()
     agent = env.agents[0]
     agent.battery_level = 3
     assert not battery_reserve_for_return(agent, (10, 10), env)

@@ -1,4 +1,4 @@
-"""SafeSwarm agent: lightweight task allocation + safety filtering."""
+"""SafeSwarm policy with weighted target allocation and runtime assurance."""
 
 from __future__ import annotations
 
@@ -7,13 +7,17 @@ from typing import Dict, List, Tuple
 from src.environment.city_twin import CityTwinEnvironment
 from src.safety.runtime_monitor import RuntimeSafetyMonitor
 
+Cell = Tuple[int, int]
+
 
 class SafeSwarmAgentPolicy:
+    name = "SafeSwarmAgent"
+
     def __init__(self, monitor: RuntimeSafetyMonitor | None = None) -> None:
         self.monitor = monitor or RuntimeSafetyMonitor()
 
     @staticmethod
-    def _direction(current: Tuple[int, int], target: Tuple[int, int]) -> str:
+    def _direction(current: Cell, target: Cell) -> str:
         dx = target[0] - current[0]
         dy = target[1] - current[1]
         if abs(dx) >= abs(dy):
@@ -27,18 +31,21 @@ class SafeSwarmAgentPolicy:
             return "UP"
         return "STAY"
 
-    def _allocate_targets(self, env: CityTwinEnvironment) -> Dict[int, Tuple[int, int]]:
-        unassigned: List[Tuple[int, int]] = list(env.mission_zones - env.visited)
-        if not unassigned:
-            unassigned = list(env.mission_zones)
-
-        assignments: Dict[int, Tuple[int, int]] = {}
-        for aid, state in env.agents.items():
+    def _allocate_targets(self, env: CityTwinEnvironment) -> Dict[int, Cell]:
+        unassigned: List[Cell] = list(env.remaining_missions() or env.mission_zones)
+        assignments: Dict[int, Cell] = {}
+        for aid, state in sorted(env.agents.items(), key=lambda item: item[1].battery_level):
             if not unassigned:
-                assignments[aid] = min(env.base_stations, key=lambda b: abs(b[0] - state.position[0]) + abs(b[1] - state.position[1]))
+                assignments[aid] = min(
+                    env.base_stations,
+                    key=lambda b: abs(b[0] - state.position[0]) + abs(b[1] - state.position[1]),
+                )
                 continue
-
-            target = min(unassigned, key=lambda c: abs(c[0] - state.position[0]) + abs(c[1] - state.position[1]))
+            target = max(
+                unassigned,
+                key=lambda c: env.priority_cells.get(c, 0.5)
+                / (1.0 + abs(c[0] - state.position[0]) + abs(c[1] - state.position[1])),
+            )
             assignments[aid] = target
             unassigned.remove(target)
         return assignments
@@ -49,10 +56,9 @@ class SafeSwarmAgentPolicy:
         for aid, state in env.agents.items():
             target = assignments[aid]
             if state.battery_level < 25:
-                target = min(env.base_stations, key=lambda b: abs(b[0] - state.position[0]) + abs(b[1] - state.position[1]))
-                state.current_task = "return_to_base"
-            else:
-                state.current_task = "explore"
+                target = min(
+                    env.base_stations,
+                    key=lambda b: abs(b[0] - state.position[0]) + abs(b[1] - state.position[1]),
+                )
             proposed[aid] = self._direction(state.position, target)
-
         return self.monitor.filter_actions(env, proposed)
