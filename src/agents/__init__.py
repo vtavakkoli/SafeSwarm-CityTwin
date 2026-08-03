@@ -6,6 +6,15 @@ from src.agents.bio_swarm_agents import (
     PSOSwarmPolicy,
     UncertaintyAwareBeeAntSwarmPolicy,
 )
+from src.agents.marl_baselines import (
+    GRPOPolicy,
+    HAPPOPolicy,
+    IPPOPolicy,
+    MADDPGPolicy,
+    MAPPOPolicy,
+    MATPolicy,
+    QMIXPolicy,
+)
 from src.agents.registry import strategy_factories
 
 __all__ = [
@@ -13,5 +22,12 @@ __all__ = [
     "BeeSwarmPolicy",
     "PSOSwarmPolicy",
     "UncertaintyAwareBeeAntSwarmPolicy",
+    "GRPOPolicy",
+    "IPPOPolicy",
+    "MAPPOPolicy",
+    "QMIXPolicy",
+    "MADDPGPolicy",
+    "HAPPOPolicy",
+    "MATPolicy",
     "strategy_factories",
 ]
