@@ -1,9 +1,34 @@
 services:
-  safeswarm-citytwin:
+  benchmark-real-cities:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: safeswarm-citytwin
     volumes:
-      - ./:/app
-    command: python experiments/run_safety_experiment.py --agents 10 --grid-size 50 --episodes 100 --seed 42
+      - ./data/cache:/app/data/cache
+      - ./results:/app/results
+    command:
+      - python
+      - experiments/run_city_benchmark.py
+      - --agents
+      - ${AGENTS:-8}
+      - --grid-size
+      - ${GRID_SIZE:-40}
+      - --episodes
+      - ${EPISODES:-10}
+      - --max-steps
+      - ${MAX_STEPS:-160}
+      - --require-real-data
+
+  benchmark-offline:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ./results:/app/results
+    command: ["python", "experiments/run_city_benchmark.py", "--offline", "--quick"]
+
+  test:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: ["pytest", "-q"]

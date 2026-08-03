@@ -1,4 +1,4 @@
-"""Safety-filtered policy wrapper around baseline actions."""
+"""Safety-filtered wrapper around the greedy city monitoring policy."""
 
 from __future__ import annotations
 
@@ -10,10 +10,11 @@ from src.safety.runtime_monitor import RuntimeSafetyMonitor
 
 
 class SafetyFilteredAgentPolicy:
+    name = "SafetyFilteredGreedy"
+
     def __init__(self, monitor: RuntimeSafetyMonitor | None = None) -> None:
         self.base = GreedyAgentPolicy()
         self.monitor = monitor or RuntimeSafetyMonitor()
 
     def act(self, env: CityTwinEnvironment) -> Dict[int, str]:
-        proposed = self.base.act(env)
-        return self.monitor.filter_actions(env, proposed)
+        return self.monitor.filter_actions(env, self.base.act(env))

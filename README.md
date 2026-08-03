@@ -1,114 +1,157 @@
 # SafeSwarm-CityTwin
 
-Safety-constrained multi-agent exploration prototype for **smart-city digital twins**.
+A reproducible, safety-constrained multi-agent benchmark for comparing urban exploration and monitoring algorithms on **small, cached real-city snapshots**.
 
-This repository provides a reproducible Python 3.12 research baseline for feasibility studies. It implements a 2D city-grid abstraction with optional ingestion of **real city data** from OpenStreetMap (OSM), runtime safety monitoring, and comparative agent strategies.
+The repository combines the original SafeSwarm runtime-assurance layer with the strongest portable bio-inspired policies from **BioSwarm-Urban-Monitoring**. Every strategy is evaluated on the same city cells, seeds, agent count, battery budget, communication model, and episode length.
 
-## Research Goal
-Evaluate whether runtime safety filtering can improve mission reliability of heterogeneous multi-agent exploration in urban digital twins while preserving acceptable runtime overhead.
+## What is included
 
-## Features
-- 2D smart-city twin grid with:
-  - obstacles
-  - restricted zones
-  - mission zones
-  - charging/base stations
-- Multi-agent state:
-  - position
-  - battery level
-  - current task
-  - communication status
-  - trajectory history
-- Safety constraints:
-  - no restricted-zone entry
-  - no inter-agent collision
-  - battery reserve for return-to-base
-  - communication-loss timeout
-  - operational boundary compliance
-- Runtime safety monitor (`RuntimeSafetyMonitor`)
-- Four exploration strategies:
-  - `RandomAgent` (unsafe baseline)
-  - `GreedyAgent` (unsafe baseline)
-  - `SafetyFilteredAgent`
-  - `SafeSwarmAgent` (task allocation + safety filtering)
-- Evaluation metrics + tables/plots/report generation
-- Docker + docker-compose support
+- Real urban layers downloaded from OpenStreetMap through OSMnx.
+- Persistent JSON caching so algorithms never receive different map snapshots in the same benchmark.
+- Explicit provenance: every run is labelled `openstreetmap` or `synthetic`; fallback data is never presented as real.
+- Weighted monitoring targets derived from emergency services, schools, public transport, parks, tourism, shops, and offices.
+- Obstacles and restricted areas derived from buildings, water/wetlands, and industrial or railway land use.
+- Runtime safety enforcement for boundaries, obstacles, restricted zones, collisions, battery return reserve, and prolonged communication loss.
+- Eight comparable strategies:
+  - `RandomAgent`
+  - `GreedyAgent`
+  - `SafetyFilteredGreedy`
+  - `SafeSwarmAgent`
+  - `AntSwarmSafe`
+  - `BeeSwarmSafe`
+  - `PSOSwarmSafe`
+  - `UA-HBAS-Safe`
+- CSV rankings, experiment manifest, PNG figures, and a self-contained HTML report.
+- Unit tests and GitHub Actions validation.
 
-## Repository Layout
-```
-SafeSwarm-CityTwin/
-├── README.md
-├── LICENSE
-├── requirements.txt
-├── docker/
-│   └── Dockerfile
-├── docker-compose.yaml
-├── src/
-│   ├── environment/
-│   │   ├── city_twin.py
-│   │   └── obstacles.py
-│   ├── agents/
-│   │   ├── random_agent.py
-│   │   ├── greedy_agent.py
-│   │   ├── safety_filtered_agent.py
-│   │   └── safe_swarm_agent.py
-│   ├── safety/
-│   │   ├── rules.py
-│   │   └── runtime_monitor.py
-│   ├── evaluation/
-│   │   └── metrics.py
-│   └── visualization/
-│       └── plots.py
-├── experiments/
-│   └── run_safety_experiment.py
-├── results/
-│   ├── tables/
-│   ├── figures/
-│   └── reports/
-└── tests/
-```
+## Real-city benchmark
 
-## Setup
-### Local (Python 3.12)
+The default benchmark evaluates central snapshots of Vienna, London, and San Francisco.
+
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+python experiments/run_city_benchmark.py \
+  --agents 8 \
+  --grid-size 40 \
+  --episodes 10 \
+  --max-steps 160
 ```
 
-### Docker
+Run only selected cities:
+
 ```bash
-docker compose up --build
+python experiments/run_city_benchmark.py --cities Vienna London
 ```
 
-## Run experiment
+Require real data and fail instead of falling back:
+
 ```bash
-python experiments/run_safety_experiment.py --agents 10 --grid-size 50 --episodes 100 --seed 42
+python experiments/run_city_benchmark.py --require-real-data
 ```
 
-Outputs:
-- `results/tables/safety_experiment_results.csv`
-- `results/figures/safety_violations_comparison.png`
-- `results/figures/mission_success_comparison.png`
-- `results/figures/trajectories_with_restricted_zones.png`
-- `results/figures/runtime_overhead.png`
-- `results/reports/safety_feasibility_report.md`
+Quick deterministic development run without network access:
 
-## Real city data usage (v1)
-The environment attempts to load real geospatial context from OpenStreetMap (city/place configurable through CLI):
-- building footprints -> obstacles
-- parks/water/industrial polygons -> restricted zones
-- points of interest -> mission zones
-- fire/police/hospital amenities -> base/charging stations
-
-If OSM download is unavailable, the prototype falls back to deterministic synthetic zones to preserve experiment reproducibility.
-
-## Tests
 ```bash
+python experiments/run_city_benchmark.py --offline --quick
+```
+
+## Docker
+
+```bash
+docker compose up --build benchmark-real-cities
+```
+
+For tests and the small offline benchmark:
+
+```bash
+docker compose up --build test
+docker compose up --build benchmark-offline
+```
+
+Generated artifacts are written to:
+
+```text
+results/real_city_benchmark/
+├── report.html
+├── manifest.json
+├── figures/
+│   ├── overall_score.png
+│   ├── target_discovery.png
+│   └── safety_incidents.png
+└── tables/
+    ├── episode_results.csv
+    ├── city_ranking.csv
+    └── overall_ranking.csv
+```
+
+## Fair-comparison protocol
+
+For each city and episode, the city layer is loaded once and reused by every algorithm. The benchmark holds constant:
+
+- cached city snapshot;
+- seed;
+- grid size;
+- number of agents;
+- mission and safety zones;
+- communication dropout process;
+- battery model;
+- sensor radius;
+- maximum steps.
+
+Fresh policy objects are created for every episode to prevent state leakage.
+
+## Ranking
+
+The operational score is bounded to `[0, 1]` and weights:
+
+| Component | Weight |
+|---|---:|
+| Weighted priority-target discovery | 35% |
+| Traversable-area coverage | 20% |
+| Actual safety | 20% |
+| Energy efficiency | 10% |
+| Coordination / low redundant coverage | 10% |
+| Communication availability | 5% |
+
+Runtime is reported separately because it depends on hardware. Safety-filter interventions are reported as useful diagnostics, while **actual incidents** are used in the score.
+
+## Data provenance and licensing
+
+Real snapshots are obtained from OpenStreetMap with OSMnx and cached as a derived grid abstraction. Reports and manifests retain the required attribution:
+
+> © OpenStreetMap contributors
+
+OpenStreetMap data is available under the Open Data Commons Open Database License. See `https://www.openstreetmap.org/copyright`.
+
+The cache is intentionally excluded from Git so each user can create or refresh local snapshots and review the corresponding data obligations.
+
+## Local setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install -r requirements-dev.txt
 pytest -q
 ```
 
-## Notes for feasibility-paper usage
-- Metrics and artifacts are produced in a publication-friendly folder structure.
-- A markdown report template is generated automatically for direct iteration into   manuscript sections.
+## Repository layout
+
+```text
+configs/                    Multi-city benchmark configuration
+experiments/                Single-city and multi-city runners
+src/agents/                 Baselines, SafeSwarm, BioSwarm policies, registry
+src/environment/            City ingestion, cache, and digital-twin simulation
+src/evaluation/             Metrics and ranking
+src/safety/                 Runtime safety rules and monitor
+tests/                      Unit and integration-oriented tests
+data/cache/                 Local OSM-derived snapshots (ignored)
+results/                    Generated benchmark artifacts
+```
+
+## Research use
+
+The benchmark identifies the strongest algorithm **under the configured cities and conditions**. It does not claim universal superiority. For publication-quality results, increase episodes, retain the generated manifest, report whether every city used real data, and run statistical analysis over the episode-level CSV.
+
+## License
+
+The software is released under the MIT License. OpenStreetMap-derived data remains subject to the ODbL and its attribution requirements.

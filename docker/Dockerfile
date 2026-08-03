@@ -1,13 +1,16 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    MPLBACKEND=Agg
 
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-dev.txt ./
+RUN python -m pip install --upgrade pip \
+    && pip install -r requirements-dev.txt
 
-COPY . /app
+COPY . .
 
-CMD ["python", "experiments/run_safety_experiment.py", "--agents", "10", "--grid-size", "50", "--episodes", "100", "--seed", "42"]
+CMD ["python", "experiments/run_city_benchmark.py"]

@@ -14,12 +14,19 @@ def no_restricted_zone(candidate: Cell, env: CityTwinEnvironment) -> bool:
 
 
 def no_collision(agent_id: int, candidate: Cell, env: CityTwinEnvironment, planned_positions: Dict[int, Cell]) -> bool:
-    occupied = {aid: pos for aid, pos in planned_positions.items() if aid != agent_id}
-    occupied.update({aid: state.position for aid, state in env.agents.items() if aid != agent_id})
-    return candidate not in occupied.values()
+    occupied_positions = {pos for aid, pos in planned_positions.items() if aid != agent_id}
+    occupied_positions.update(
+        state.position for aid, state in env.agents.items() if aid != agent_id
+    )
+    return candidate not in occupied_positions
 
 
-def battery_reserve_for_return(agent: AgentState, candidate: Cell, env: CityTwinEnvironment, reserve_margin: float = 5.0) -> bool:
+def battery_reserve_for_return(
+    agent: AgentState,
+    candidate: Cell,
+    env: CityTwinEnvironment,
+    reserve_margin: float = 5.0,
+) -> bool:
     dist = env.nearest_base_distance(candidate)
     required = dist * 1.5 + reserve_margin
     return agent.battery_level >= required
@@ -44,6 +51,8 @@ def evaluate_all_rules(
     violations: List[str] = []
     if not inside_operational_boundary(candidate, env):
         violations.append("boundary")
+    if candidate in env.obstacles:
+        violations.append("obstacle")
     if not no_restricted_zone(candidate, env):
         violations.append("restricted_zone")
     if not no_collision(agent_id, candidate, env, planned_positions):
@@ -52,6 +61,4 @@ def evaluate_all_rules(
         violations.append("battery_reserve")
     if not communication_within_limit(agent, max_comm_loss_steps):
         violations.append("communication_loss")
-    if candidate in env.obstacles:
-        violations.append("obstacle")
     return violations

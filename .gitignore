@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.DS_Store
+
+# Downloaded/derived OpenStreetMap snapshots
+data/cache/*.json
+
+# Generated benchmark outputs
+results/real_city_benchmark/
+results/single_city_benchmark/
+results/quick-*/
