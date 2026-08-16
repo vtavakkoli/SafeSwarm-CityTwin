@@ -4,16 +4,18 @@ A reproducible, safety-constrained multi-agent city-search benchmark with **real
 
 ## Why this version exists
 
-The original benchmark compared 15 algorithms fairly at inference time, but the PPO/GRPO entries were lightweight execution baselines rather than independently trained policies. That made the previous real-city report useful for execution benchmarking but not for claims about learned generalization.
+The original benchmark compared 15 algorithms at inference time, but the PPO/GRPO entries were lightweight execution baselines rather than independently trained policies. The first train/test extension added checkpoints and GRPO memory, but real training exposed an important methodological flaw: PPO could log one proposed action while the runtime monitor executed a different safe replacement. That makes credit assignment noisy and affected GRPO particularly strongly because it triggered many safety interventions.
 
-This repository now separates the workflow into four auditable stages:
+The current training stack fixes that problem by making safety part of the trainable action distribution itself. Trainable policies **mask unsafe actions before sampling**, so a PPO decision is trained only when that same action can be executed.
 
-1. **Prepare real city data** and freeze/cache the OSM-derived snapshots.
-2. **Train** PPO-family residual policies only on the training cities and training start zones.
-3. **Test** all algorithms on held-out cities and geographically unseen start zones.
-4. **Combine** the training and held-out results into one publication-oriented HTML report.
+The repository separates the workflow into four auditable stages:
 
-The test ranking is never hard-coded. `GRPO-Safe` is given the intended mechanism—shared swarm memory, frontier propagation, group-relative behavior selection, and a clipped-PPO residual—but it is declared best only if the held-out metrics actually support that conclusion.
+1. **Prepare real city data** and freeze/cache OSM-derived snapshots.
+2. **Train** only on training cities/start zones using balanced geography batches.
+3. **Select** checkpoints only on the disjoint validation split.
+4. **Test** frozen checkpoints on held-out cities and geographically unseen start zones, then build one publication-oriented report.
+
+The test ranking is never hard-coded. `GRPO-Safe` receives the intended memory/search mechanism, but it is declared best only if the held-out metrics actually support that conclusion.
 
 ## Real-city protocol
 
@@ -27,37 +29,65 @@ The test ranking is never hard-coded. `GRPO-Safe` is given the intended mechanis
 
 The city sets are disjoint and the test start zones never appear in training. This creates two simultaneous generalization tests: **unseen city structure** and **unseen deployment geography**.
 
-Real snapshots are downloaded with OSMnx, cached under `data/cache/`, and attributed to © OpenStreetMap contributors. Synthetic fallback is clearly labelled and is rejected by the real-data Docker workflow.
+Real snapshots are downloaded with OSMnx, cached under `data/cache/`, and attributed to © OpenStreetMap contributors. Synthetic fallback is labelled and rejected by the real-data Docker workflow.
 
-## GRPO-Safe: swarm memory + geographic propagation
+## PPO v2: correct safety-aware credit assignment
 
-`TrainableGRPOMemoryPolicy` extends the existing GRPO-Safe execution policy with a shared spatial memory field. The memory is updated only from information available to the swarm during execution:
+Trainable PPO-family policies use a sequential runtime-safe action mask before stochastic sampling:
 
-- sensed observation values;
+1. enumerate candidate actions;
+2. remove actions violating boundary, obstacle, restricted-zone, collision, battery-reserve, or communication rules;
+3. normalize the policy only over the remaining safe actions;
+4. sample one action and store its exact probability;
+5. execute that same action in the environment.
+
+If no legal action exists, the runtime monitor can still apply a last-resort fallback, but that forced fallback does **not** create a PPO training sample. `mask_rejections` and true runtime `safety_interventions` are reported separately.
+
+The actor also removes oracle target information: trainable execution uses sensed observations rather than hidden target labels. A lightweight centralized linear critic is used only during training, with GAE-style advantages, while execution remains decentralized.
+
+## GRPO-Safe: learned behavior + signed swarm memory
+
+`TrainableGRPOMemoryPolicy` now trains two policy levels:
+
+- a high-level GRPO behavior distribution over exploration, exploitation, pheromone following, communication, revisit handling, redundancy reduction, and energy-safe return;
+- a spatial action policy whose learned residual includes swarm memory, frontier utility, propagation gradient, and return-to-base progress.
+
+The memory uses only execution-available evidence:
+
+- sensed observations;
 - uncertainty and exploration-frontier state;
 - pheromone traces;
 - visit history;
-- inter-agent spatial context.
+- known obstacles/restricted regions;
+- current swarm occupancy.
 
-The map decays over time and diffuses to neighboring cells to create a **geographic propagation field**. Agents can therefore move along promising search frontiers instead of repeatedly making only local independent decisions. Memory and frontier values are also inputs to the learnable PPO residual.
+It is a **signed search-utility field**, not a hidden target map. Unexplored frontiers and useful nearby evidence are attractive; revisits, congestion, discovered targets, and unsafe boundaries are repulsive. Positive utility propagates only through traversable unexplored geography.
 
-The GRPO behavior group still chooses among exploration, high-priority exploitation, pheromone following, communication, unresolved-target revisit, redundant-coverage reduction, and energy saving. A lightweight clipped-PPO residual is trained over interpretable action features. The residual is deliberately linear/NumPy-based so checkpoints remain inspectable and training remains reproducible without a heavyweight neural stack.
+The previous fixed memory/frontier/propagation bonuses are now trainable policy weights. The `save_energy` behavior also prefers progress toward a base rather than simply remaining stationary.
 
 ## Trainable policies
 
 The training stage fits:
 
-- `GRPO-Safe` — group-relative behavior selection + swarm memory + propagation + PPO residual
-- `IPPO-Safe` — independent PPO-style baseline + PPO residual
-- `MAPPO-Safe` — centralized-context MAPPO-style baseline + PPO residual
-- `HAPPO-Safe` — heterogeneous-agent PPO-style baseline + PPO residual
+- `GRPO-Safe` — trainable behavior selector + signed swarm memory + propagation + PPO residual;
+- `IPPO-Safe` — independent PPO-style baseline + safety-masked PPO residual;
+- `MAPPO-Safe` — centralized-context MAPPO-style baseline + safety-masked PPO residual;
+- `HAPPO-Safe` — heterogeneous-agent PPO-style baseline + safety-masked PPO residual.
 
-The remaining primary methods stay fixed baselines during testing. The held-out evaluation additionally creates two controlled GRPO ablations from the same trained checkpoint:
+The held-out evaluation additionally creates two controlled GRPO ablations from the same selected checkpoint:
 
 - `GRPO-Safe-Ablation-NoMemory` — disables memory, frontier, and propagation influence;
-- `GRPO-Safe-Ablation-NoPropagation` — keeps memory/frontier use but disables geographic diffusion/gradient propagation.
+- `GRPO-Safe-Ablation-NoPropagation` — keeps local memory/frontier use but disables geographic propagation.
 
-This makes it possible to test whether a GRPO gain actually comes from the swarm-memory and propagation mechanisms.
+A GRPO gain is therefore useful scientifically only if the full policy also beats these ablations on the held-out split.
+
+## Balanced training and checkpoint selection
+
+Normal training performs updates only after a complete **city × start-zone batch**. With 3 training cities and 3 training zones, one epoch contains 9 geography scenarios. Environment seeds are paired across strategies to reduce comparison variance.
+
+After each epoch, the current checkpoint is evaluated on the disjoint Amsterdam validation split. The checkpoint with the highest mean validation operational score is copied to `results/train/checkpoints/`. **San Francisco and Paris are never consulted for checkpoint selection.**
+
+`final_train_score` now means the mean score of the final balanced training batch rather than the score of one stochastic final episode. `training_summary.csv` additionally reports the best validation score, confidence interval, and selected epoch.
 
 ## Docker workflow
 
@@ -75,12 +105,23 @@ Outputs `results/prepare-data/city_data_manifest.csv` and `manifest.json`.
 docker compose up --build train
 ```
 
-Docker runs 18 episodes per trainable strategy by default, giving two passes over every train-city/start-zone pairing. It writes checkpoints, `training_history.csv`, `training_summary.csv`, and a manifest under `results/train/`.
+Docker requests **54 training episodes per strategy by default**, equivalent to six complete 3-city × 3-zone batches, plus 6 validation episodes after each epoch. It writes:
+
+```text
+results/train/
+├── checkpoints/          # best validation-selected checkpoints
+├── candidates/           # latest epoch candidates
+├── training_history.csv
+├── validation_history.csv
+├── training_summary.csv
+└── manifest.json
+```
 
 For a larger publication run:
 
 ```bash
-TRAIN_EPISODES=27 AGENTS=8 GRID_SIZE=40 MAX_STEPS=200 docker compose up --build train
+TRAIN_EPISODES=90 VALIDATION_EPISODES=12 AGENTS=8 GRID_SIZE=40 MAX_STEPS=200 \
+  docker compose up --build train
 ```
 
 ### 3. Held-out test
@@ -89,7 +130,7 @@ TRAIN_EPISODES=27 AGENTS=8 GRID_SIZE=40 MAX_STEPS=200 docker compose up --build 
 docker compose up --build test
 ```
 
-The test step requires the four trained checkpoints; it fails instead of silently substituting untrained PPO policies. By default it evaluates the 15 primary strategies plus two GRPO mechanism ablations for 20 episodes per held-out city on San Francisco and Paris while alternating the unseen north-east and south-west start zones.
+The test step requires all four trained checkpoints and fails instead of silently substituting untrained policies. By default it evaluates the primary strategies plus the two GRPO mechanism ablations for 20 episodes per held-out city on San Francisco and Paris while alternating the unseen north-east and south-west start zones.
 
 Outputs:
 
@@ -103,7 +144,7 @@ results/test/
     └── overall_ranking.csv
 ```
 
-The held-out report includes a 95% confidence interval for the operational score.
+The held-out report includes 95% confidence intervals for the operational score.
 
 ### 4. Complete pipeline + combined report
 
@@ -111,7 +152,7 @@ The held-out report includes a 95% confidence interval for the operational score
 docker compose up --build pipeline
 ```
 
-This runs prepare → train → test → combined report and writes `results/report.html`.
+This runs prepare → train/validate → held-out test → combined report and writes `results/report.html`.
 
 For deterministic CI/development without network access:
 
@@ -128,7 +169,7 @@ docker compose up --build benchmark-real-cities
 docker compose up --build benchmark-offline
 ```
 
-It is intentionally kept separate from the train/test protocol so old results remain reproducible.
+It is intentionally separate from the train/test protocol so legacy results remain reproducible.
 
 ## Evaluation score
 
@@ -143,26 +184,29 @@ Every strategy is ranked with the same hardware-independent operational score:
 | Coordination / low redundant coverage | 10% |
 | Communication availability | 5% |
 
-Runtime is reported separately. Safety-filter interventions are diagnostics; actual incidents determine the safety term.
+Runtime is reported separately. Masked unsafe candidates and runtime interventions are diagnostics; actual incidents determine the safety term.
 
 ## GRPO hypothesis and scientific integrity
 
 The intended research hypothesis is:
 
-> Shared swarm memory + geographic frontier propagation + group-relative behavior selection should improve GRPO-Safe on difficult unseen-city search tasks.
+> Learned shared swarm memory + geographic frontier propagation + group-relative behavior selection should improve GRPO-Safe on difficult unseen-city search tasks.
 
 The repository tests that hypothesis without manipulating the ranking:
 
-- no test-city metric is used during training;
-- test cities are disjoint from train cities;
+- train, validation, and test cities are disjoint;
 - test start zones are unseen during training;
+- no test metric selects a checkpoint;
+- train updates use balanced geography batches and paired environment seeds;
+- PPO samples correspond to executed safe actions;
+- forced safety fallbacks do not receive PPO credit;
+- trainable actor inputs do not expose hidden target labels;
 - episodic swarm memory is reset between cities/episodes;
-- every baseline receives the same environment, seeds, agent count, safety monitor, and episode budget;
-- GRPO memory and propagation ablations isolate mechanism contribution;
-- confidence intervals are reported from independent held-out episodes;
-- the combined report explicitly shows the held-out winner even if it is not GRPO-Safe.
+- GRPO memory/propagation ablations isolate mechanism contribution;
+- confidence intervals are reported on held-out episodes;
+- the combined report shows the actual held-out winner even if it is not GRPO-Safe.
 
-For a paper, use 27–30 independent training episodes and 20–30 test episodes per held-out city, archive `results/`, and report both checkpoint metadata and the OSM provenance manifest.
+For a paper, use multiple complete geography batches (for example 90+ training episodes per strategy), at least 20–30 held-out episodes per city, archive `results/`, and report both checkpoint metadata and the OSM provenance manifest. Do not reuse numerical results produced by an older training implementation.
 
 ## Repository layout
 
@@ -180,12 +224,16 @@ experiments/
 src/
   agents/
     marl_baselines.py
+    safe_ppo_core.py
+    grpo_memory_v2.py
     trainable_policies.py
   environment/
   evaluation/
   safety/
+    runtime_monitor.py
   training/
     geography.py
+    policy_learning.py
 tests/
 results/
 data/cache/
@@ -198,7 +246,7 @@ docker-compose.yaml
 docker compose up --build unit-test
 ```
 
-The tests cover protocol separation, geographic spawn zones, GRPO memory propagation, checkpoint round-tripping, PPO residual updates, safety rules, city layers, ranking, and the original baselines. GitHub Actions also runs the offline prepare→train→test→combined-report smoke pipeline.
+Tests cover protocol separation, geographic spawn zones, safety-masked PPO credit assignment, GRPO memory propagation, learned behavior updates, GAE targets, checkpoint round-tripping, safety rules, city layers, ranking, and the original baselines. GitHub Actions also runs the offline prepare → train → test → combined-report smoke pipeline.
 
 ## Data provenance and licensing
 
@@ -210,4 +258,4 @@ OpenStreetMap data is available under the Open Data Commons Open Database Licens
 
 ## Research scope
 
-The repository supports reproducible comparative research under the configured cities, start zones, and operational score. It does **not** claim universal superiority of any algorithm, and the NumPy PPO residual should not be presented as a full deep-neural reproduction of the original IPPO/MAPPO/HAPPO papers. Its purpose is transparent, controlled policy learning within the SafeSwarm CityTwin benchmark.
+The repository supports reproducible comparative research under the configured cities, start zones, and operational score. It does **not** claim universal superiority of any algorithm, and the NumPy policy/critic stack should not be presented as a full deep-neural reproduction of the original IPPO/MAPPO/HAPPO papers. Its purpose is transparent, controlled, safety-aware policy learning within the SafeSwarm CityTwin benchmark.

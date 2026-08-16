@@ -26,7 +26,9 @@ services:
       - --grid-size
       - ${GRID_SIZE:-40}
       - --episodes
-      - ${TRAIN_EPISODES:-18}
+      - ${TRAIN_EPISODES:-54}
+      - --validation-episodes
+      - ${VALIDATION_EPISODES:-6}
       - --max-steps
       - ${MAX_STEPS:-160}
       - --require-real-data
