@@ -138,5 +138,5 @@ def test_gae_uses_value_baseline():
     )
     assert len(advantages) == 3
     assert len(targets) == 3
-    assert advantages[-1] == 0.6
-    assert targets[-1] == 1.0
+    assert np.isclose(advantages[-1], 0.6)
+    assert np.isclose(targets[-1], 1.0)
