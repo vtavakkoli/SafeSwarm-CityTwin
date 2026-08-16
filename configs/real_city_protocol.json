@@ -1,0 +1,22 @@
+{
+  "protocol_version": "2.0",
+  "description": "Real-city train/validation/test protocol with geographically disjoint starting zones.",
+  "cities": [
+    {"name": "Vienna", "place": "Vienna, Austria", "radius_m": 1400, "split": "train"},
+    {"name": "London", "place": "London, United Kingdom", "radius_m": 1400, "split": "train"},
+    {"name": "Berlin", "place": "Berlin, Germany", "radius_m": 1400, "split": "train"},
+    {"name": "Amsterdam", "place": "Amsterdam, Netherlands", "radius_m": 1400, "split": "validation"},
+    {"name": "San Francisco", "place": "San Francisco, California, USA", "radius_m": 1400, "split": "test"},
+    {"name": "Paris", "place": "Paris, France", "radius_m": 1400, "split": "test"}
+  ],
+  "start_zones": {
+    "train": ["north_west", "south_east", "center"],
+    "validation": ["west"],
+    "test": ["north_east", "south_west"]
+  },
+  "integrity_rules": {
+    "city_splits_disjoint": true,
+    "test_start_zones_unseen_during_training": true,
+    "checkpoint_selection_uses_no_test_metrics": true
+  }
+}

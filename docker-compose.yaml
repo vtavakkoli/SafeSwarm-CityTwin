@@ -1,11 +1,63 @@
+x-benchmark-common: &benchmark-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  volumes:
+    - ./data/cache:/app/data/cache
+    - ./results:/app/results
+
 services:
+  prepare-data:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/prepare_real_city_data.py
+      - --grid-size
+      - ${GRID_SIZE:-40}
+      - --require-real-data
+
+  train:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/train_real_city_policies.py
+      - --agents
+      - ${AGENTS:-8}
+      - --grid-size
+      - ${GRID_SIZE:-40}
+      - --episodes
+      - ${TRAIN_EPISODES:-18}
+      - --max-steps
+      - ${MAX_STEPS:-160}
+      - --require-real-data
+
+  test:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/test_real_city_policies.py
+      - --agents
+      - ${AGENTS:-8}
+      - --grid-size
+      - ${GRID_SIZE:-40}
+      - --episodes
+      - ${TEST_EPISODES:-20}
+      - --max-steps
+      - ${MAX_STEPS:-160}
+      - --model-dir
+      - results/train/checkpoints
+      - --require-real-data
+
+  pipeline:
+    <<: *benchmark-common
+    command: ["python", "experiments/run_train_test_pipeline.py", "--require-real-data"]
+
+  pipeline-offline:
+    <<: *benchmark-common
+    command: ["python", "experiments/run_train_test_pipeline.py", "--offline", "--quick"]
+
   benchmark-real-cities:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    volumes:
-      - ./data/cache:/app/data/cache
-      - ./results:/app/results
+    <<: *benchmark-common
     command:
       - python
       - experiments/run_city_benchmark.py
@@ -20,14 +72,10 @@ services:
       - --require-real-data
 
   benchmark-offline:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    volumes:
-      - ./results:/app/results
+    <<: *benchmark-common
     command: ["python", "experiments/run_city_benchmark.py", "--offline", "--quick"]
 
-  test:
+  unit-test:
     build:
       context: .
       dockerfile: docker/Dockerfile

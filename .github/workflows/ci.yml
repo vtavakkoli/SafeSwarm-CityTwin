@@ -10,7 +10,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,8 +25,19 @@ jobs:
         run: pytest -q
       - name: Offline integration benchmark
         run: python experiments/run_city_benchmark.py --offline --quick --output-root results/ci-benchmark
-      - name: Upload benchmark artifact
+      - name: Offline train-test smoke pipeline
+        run: |
+          python experiments/run_train_test_pipeline.py --offline --quick
+          test -f results/train/training_summary.csv
+          test -f results/test/tables/overall_ranking.csv
+          test -f results/report.html
+      - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: safeswarm-ci-benchmark
-          path: results/ci-benchmark
+          name: safeswarm-ci-results
+          path: |
+            results/ci-benchmark
+            results/prepare-data
+            results/train
+            results/test
+            results/report.html
