@@ -290,7 +290,7 @@ class TrainableGRPOMemoryPolicy(PPOResidualMixin, GRPOPolicy):
         self.memory_weight = float(memory_weight)
         self.frontier_weight = float(frontier_weight)
         self.propagation_weight = float(propagation_weight)
-        self.propagation_steps = max(1, int(propagation_steps))
+        self.propagation_steps = max(0, int(propagation_steps))
         self.swarm_memory: np.ndarray | None = None
         self.memory_updates = 0
         self.memory_peak = 0.0
@@ -310,7 +310,7 @@ class TrainableGRPOMemoryPolicy(PPOResidualMixin, GRPOPolicy):
                 if key in memory:
                     setattr(self, key, float(memory[key]))
             if "propagation_steps" in memory:
-                self.propagation_steps = max(1, int(memory["propagation_steps"]))
+                self.propagation_steps = max(0, int(memory["propagation_steps"]))
         except (OSError, ValueError, TypeError):
             return
 
@@ -467,13 +467,47 @@ def checkpoint_path(model_dir: str | Path, strategy: str) -> Path:
     return Path(model_dir) / f"{safe_name}.json"
 
 
+def _grpo_ablation(seed: int, path: Path, mode: str) -> TrainableGRPOMemoryPolicy:
+    policy = TrainableGRPOMemoryPolicy(seed=seed, model_path=path)
+    if mode == "no_memory":
+        policy.memory_weight = 0.0
+        policy.frontier_weight = 0.0
+        policy.propagation_weight = 0.0
+        policy.propagation_steps = 0
+        policy.residual_weights[-2:] = 0.0
+    elif mode == "no_propagation":
+        policy.propagation_weight = 0.0
+        policy.propagation_steps = 0
+    else:
+        raise ValueError(f"Unknown GRPO ablation mode: {mode}")
+    return policy
+
+
 def evaluation_factories(seed: int, model_dir: str | Path | None = None) -> dict[str, Any]:
     from src.agents.registry import strategy_factories
 
     factories = strategy_factories(seed=seed)
+    paths: dict[str, Path | None] = {
+        strategy: checkpoint_path(model_dir, strategy) if model_dir else None
+        for strategy in TRAINABLE_POLICY_CLASSES
+    }
+    if model_dir:
+        missing = [strategy for strategy, path in paths.items() if path is None or not path.exists()]
+        if missing:
+            raise FileNotFoundError(
+                "Missing trained checkpoints for held-out testing: " + ", ".join(missing)
+            )
+
     for strategy, cls in TRAINABLE_POLICY_CLASSES.items():
-        path = checkpoint_path(model_dir, strategy) if model_dir else None
-        factories[strategy] = (
-            lambda cls=cls, path=path: cls(seed=seed, model_path=path if path and path.exists() else None)
+        path = paths[strategy]
+        factories[strategy] = lambda cls=cls, path=path: cls(seed=seed, model_path=path)
+
+    grpo_path = paths["GRPO-Safe"]
+    if grpo_path is not None:
+        factories["GRPO-Safe-Ablation-NoMemory"] = (
+            lambda path=grpo_path: _grpo_ablation(seed, path, "no_memory")
+        )
+        factories["GRPO-Safe-Ablation-NoPropagation"] = (
+            lambda path=grpo_path: _grpo_ablation(seed, path, "no_propagation")
         )
     return factories

@@ -39,9 +39,9 @@ Real snapshots are downloaded with OSMnx, cached under `data/cache/`, and attrib
 - visit history;
 - inter-agent spatial context.
 
-The map decays over time and diffuses to neighboring cells to create a **geographic propagation field**. Agents can therefore move along promising search frontiers instead of repeatedly making only local independent decisions. Memory and frontier values also enter the learnable PPO residual, so training can change how strongly they affect action selection.
+The map decays over time and diffuses to neighboring cells to create a **geographic propagation field**. Agents can therefore move along promising search frontiers instead of repeatedly making only local independent decisions. Memory and frontier values are also inputs to the learnable PPO residual.
 
-GRPO still performs group-relative behavior selection over exploration, target exploitation, pheromone following, communication, unresolved-target revisit, redundancy reduction, and energy saving. A lightweight clipped-PPO residual is trained over interpretable action features. The residual is deliberately NumPy-based so checkpoints remain inspectable and training remains reproducible without a heavyweight neural stack.
+The GRPO behavior group still chooses among exploration, high-priority exploitation, pheromone following, communication, unresolved-target revisit, redundant-coverage reduction, and energy saving. A lightweight clipped-PPO residual is trained over interpretable action features. The residual is deliberately linear/NumPy-based so checkpoints remain inspectable and training remains reproducible without a heavyweight neural stack.
 
 ## Trainable policies
 
@@ -52,7 +52,12 @@ The training stage fits:
 - `MAPPO-Safe` — centralized-context MAPPO-style baseline + PPO residual
 - `HAPPO-Safe` — heterogeneous-agent PPO-style baseline + PPO residual
 
-The remaining methods stay fixed baselines during testing, so the held-out report shows whether training genuinely improves the PPO family relative to classical, bio-inspired, value-decomposition, actor-critic-inspired, and attention-based alternatives.
+The remaining primary methods stay fixed baselines during testing. The held-out evaluation additionally creates two controlled GRPO ablations from the same trained checkpoint:
+
+- `GRPO-Safe-Ablation-NoMemory` — disables memory, frontier, and propagation influence;
+- `GRPO-Safe-Ablation-NoPropagation` — keeps memory/frontier use but disables geographic diffusion/gradient propagation.
+
+This makes it possible to test whether a GRPO gain actually comes from the swarm-memory and propagation mechanisms.
 
 ## Docker workflow
 
@@ -70,7 +75,7 @@ Outputs `results/prepare-data/city_data_manifest.csv` and `manifest.json`.
 docker compose up --build train
 ```
 
-By default Docker runs 18 episodes per trainable strategy, giving two passes over every train-city/start-zone pairing. Checkpoints and training history are written under `results/train/`.
+Docker runs 18 episodes per trainable strategy by default, giving two passes over every train-city/start-zone pairing. It writes checkpoints, `training_history.csv`, `training_summary.csv`, and a manifest under `results/train/`.
 
 For a larger publication run:
 
@@ -84,7 +89,7 @@ TRAIN_EPISODES=27 AGENTS=8 GRID_SIZE=40 MAX_STEPS=200 docker compose up --build 
 docker compose up --build test
 ```
 
-By default this evaluates all 15 strategies for 20 episodes per held-out city on San Francisco and Paris while alternating the unseen north-east and south-west start zones.
+The test step requires the four trained checkpoints; it fails instead of silently substituting untrained PPO policies. By default it evaluates the 15 primary strategies plus two GRPO mechanism ablations for 20 episodes per held-out city on San Francisco and Paris while alternating the unseen north-east and south-west start zones.
 
 Outputs:
 
@@ -153,6 +158,7 @@ The repository tests that hypothesis without manipulating the ranking:
 - test start zones are unseen during training;
 - episodic swarm memory is reset between cities/episodes;
 - every baseline receives the same environment, seeds, agent count, safety monitor, and episode budget;
+- GRPO memory and propagation ablations isolate mechanism contribution;
 - confidence intervals are reported from independent held-out episodes;
 - the combined report explicitly shows the held-out winner even if it is not GRPO-Safe.
 
@@ -192,7 +198,7 @@ docker-compose.yaml
 docker compose up --build unit-test
 ```
 
-The tests cover protocol separation, geographic spawn zones, GRPO memory propagation, checkpoint round-tripping, PPO residual updates, safety rules, city layers, ranking, and the original baselines. GitHub Actions also runs the full offline prepare→train→test→combined-report smoke pipeline.
+The tests cover protocol separation, geographic spawn zones, GRPO memory propagation, checkpoint round-tripping, PPO residual updates, safety rules, city layers, ranking, and the original baselines. GitHub Actions also runs the offline prepare→train→test→combined-report smoke pipeline.
 
 ## Data provenance and licensing
 
