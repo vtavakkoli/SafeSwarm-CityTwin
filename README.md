@@ -1,110 +1,138 @@
 # SafeSwarm-CityTwin
 
-A reproducible, safety-constrained multi-agent benchmark for comparing urban exploration and monitoring algorithms on **small, cached real-city snapshots**.
+A reproducible, safety-constrained multi-agent city-search benchmark with **real OpenStreetMap city snapshots**, explicit **train/validation/test separation**, runtime safety assurance, and a trainable GRPO-Safe policy with shared swarm memory and geographic propagation.
 
-The repository combines the original SafeSwarm runtime-assurance layer with portable bio-inspired and multi-agent policy implementations from **BioSwarm-Urban-Monitoring**. Every strategy is evaluated on the same city cells, seeds, agent count, battery budget, communication model, and episode length.
+## Why this version exists
 
-## What is included
+The original benchmark compared 15 algorithms fairly at inference time, but the PPO/GRPO entries were lightweight execution baselines rather than independently trained policies. That made the previous real-city report useful for execution benchmarking but not for claims about learned generalization.
 
-- Real urban layers downloaded from OpenStreetMap through OSMnx.
-- Persistent JSON caching so algorithms never receive different map snapshots in the same benchmark.
-- Explicit provenance: every run is labelled `openstreetmap` or `synthetic`; fallback data is never presented as real.
-- Weighted monitoring targets derived from emergency services, schools, public transport, parks, tourism, shops, and offices.
-- Obstacles and restricted areas derived from buildings, water/wetlands, and industrial or railway land use.
-- Runtime safety enforcement for boundaries, obstacles, restricted zones, collisions, battery return reserve, and prolonged communication loss.
-- Fifteen comparable strategies:
-  - Classical and SafeSwarm: `RandomAgent`, `GreedyAgent`, `SafetyFilteredGreedy`, `SafeSwarmAgent`
-  - Bio-inspired: `AntSwarmSafe`, `BeeSwarmSafe`, `PSOSwarmSafe`, `UA-HBAS-Safe`
-  - GRPO and established MARL: `GRPO-Safe`, `IPPO-Safe`, `MAPPO-Safe`, `QMIX-Safe`, `MADDPG-Safe`, `HAPPO-Safe`, `MAT-Safe`
-- CSV rankings, experiment manifest, PNG figures, and a self-contained HTML report.
-- Unit tests and GitHub Actions validation.
+This repository now separates the workflow into four auditable stages:
 
-## GRPO and MARL implementations
+1. **Prepare real city data** and freeze/cache the OSM-derived snapshots.
+2. **Train** PPO-family residual policies only on the training cities and training start zones.
+3. **Test** all algorithms on held-out cities and geographically unseen start zones.
+4. **Combine** the training and held-out results into one publication-oriented HTML report.
 
-`GRPO-Safe` ports the group-relative behavior selection used in BioSwarm into the CityTwin environment. It scores a group of high-level behaviors, normalizes them relative to the group mean and standard deviation, samples a behavior with a softmax policy, and then selects a city-grid action through the SafeSwarm runtime monitor.
+The test ranking is never hard-coded. `GRPO-Safe` is given the intended mechanism—shared swarm memory, frontier propagation, group-relative behavior selection, and a clipped-PPO residual—but it is declared best only if the held-out metrics actually support that conclusion.
 
-The repository also includes executable NumPy policy implementations for IPPO, MAPPO, QMIX, MADDPG, HAPPO, and MAT. They preserve the characteristic decision structure of each method—independent actors, centralized team context, monotonic value decomposition, continuous-actor-inspired movement, heterogeneous sequential roles, and attention-based coordination—while sharing the same discrete grid interface and safety filter.
+## Real-city protocol
 
-These entries are **lightweight inference/benchmark implementations**, not claims of reproducing the complete neural training stacks from the original papers. Their purpose is to provide transparent, deterministic, directly comparable execution baselines. Optional JSON policy parameters can be loaded through `model_path` for fitted or tuned runs.
+`configs/real_city_protocol.json` defines the experiment contract.
 
-## Real-city benchmark
+| Split | Cities | Starting zones |
+|---|---|---|
+| Train | Vienna, London, Berlin | north-west, south-east, center |
+| Validation | Amsterdam | west |
+| Test | San Francisco, Paris | north-east, south-west |
 
-The default benchmark evaluates central snapshots of Vienna, London, and San Francisco.
+The city sets are disjoint and the test start zones never appear in training. This creates two simultaneous generalization tests: **unseen city structure** and **unseen deployment geography**.
+
+Real snapshots are downloaded with OSMnx, cached under `data/cache/`, and attributed to © OpenStreetMap contributors. Synthetic fallback is clearly labelled and is rejected by the real-data Docker workflow.
+
+## GRPO-Safe: swarm memory + geographic propagation
+
+`TrainableGRPOMemoryPolicy` extends the existing GRPO-Safe execution policy with a shared spatial memory field. The memory is updated only from information available to the swarm during execution:
+
+- sensed observation values;
+- uncertainty and exploration-frontier state;
+- pheromone traces;
+- visit history;
+- inter-agent spatial context.
+
+The map decays over time and diffuses to neighboring cells to create a **geographic propagation field**. Agents can therefore move along promising search frontiers instead of repeatedly making only local independent decisions. Memory and frontier values are also inputs to the learnable PPO residual.
+
+The GRPO behavior group still chooses among exploration, high-priority exploitation, pheromone following, communication, unresolved-target revisit, redundant-coverage reduction, and energy saving. A lightweight clipped-PPO residual is trained over interpretable action features. The residual is deliberately linear/NumPy-based so checkpoints remain inspectable and training remains reproducible without a heavyweight neural stack.
+
+## Trainable policies
+
+The training stage fits:
+
+- `GRPO-Safe` — group-relative behavior selection + swarm memory + propagation + PPO residual
+- `IPPO-Safe` — independent PPO-style baseline + PPO residual
+- `MAPPO-Safe` — centralized-context MAPPO-style baseline + PPO residual
+- `HAPPO-Safe` — heterogeneous-agent PPO-style baseline + PPO residual
+
+The remaining primary methods stay fixed baselines during testing. The held-out evaluation additionally creates two controlled GRPO ablations from the same trained checkpoint:
+
+- `GRPO-Safe-Ablation-NoMemory` — disables memory, frontier, and propagation influence;
+- `GRPO-Safe-Ablation-NoPropagation` — keeps memory/frontier use but disables geographic diffusion/gradient propagation.
+
+This makes it possible to test whether a GRPO gain actually comes from the swarm-memory and propagation mechanisms.
+
+## Docker workflow
+
+### 1. Prepare real data
 
 ```bash
-python experiments/run_city_benchmark.py \
-  --agents 8 \
-  --grid-size 40 \
-  --episodes 10 \
-  --max-steps 160
+docker compose up --build prepare-data
 ```
 
-Run only selected cities:
+Outputs `results/prepare-data/city_data_manifest.csv` and `manifest.json`.
+
+### 2. Train
 
 ```bash
-python experiments/run_city_benchmark.py --cities Vienna London
+docker compose up --build train
 ```
 
-Require real data and fail instead of falling back:
+Docker runs 18 episodes per trainable strategy by default, giving two passes over every train-city/start-zone pairing. It writes checkpoints, `training_history.csv`, `training_summary.csv`, and a manifest under `results/train/`.
+
+For a larger publication run:
 
 ```bash
-python experiments/run_city_benchmark.py --require-real-data
+TRAIN_EPISODES=27 AGENTS=8 GRID_SIZE=40 MAX_STEPS=200 docker compose up --build train
 ```
 
-Quick deterministic development run without network access:
-
-```bash
-python experiments/run_city_benchmark.py --offline --quick
-```
-
-## Docker
-
-```bash
-docker compose up --build benchmark-real-cities
-```
-
-For tests and the small offline benchmark:
+### 3. Held-out test
 
 ```bash
 docker compose up --build test
-docker compose up --build benchmark-offline
 ```
 
-Generated artifacts are written to:
+The test step requires the four trained checkpoints; it fails instead of silently substituting untrained PPO policies. By default it evaluates the 15 primary strategies plus two GRPO mechanism ablations for 20 episodes per held-out city on San Francisco and Paris while alternating the unseen north-east and south-west start zones.
+
+Outputs:
 
 ```text
-results/real_city_benchmark/
+results/test/
 ├── report.html
 ├── manifest.json
-├── figures/
-│   ├── overall_score.png
-│   ├── target_discovery.png
-│   └── safety_incidents.png
 └── tables/
     ├── episode_results.csv
     ├── city_ranking.csv
     └── overall_ranking.csv
 ```
 
-## Fair-comparison protocol
+The held-out report includes a 95% confidence interval for the operational score.
 
-For each city and episode, the city layer is loaded once and reused by every algorithm. The benchmark holds constant:
+### 4. Complete pipeline + combined report
 
-- cached city snapshot;
-- seed;
-- grid size;
-- number of agents;
-- mission and safety zones;
-- communication dropout process;
-- battery model;
-- sensor radius;
-- maximum steps.
+```bash
+docker compose up --build pipeline
+```
 
-Fresh policy objects are created for every episode to prevent state leakage.
+This runs prepare → train → test → combined report and writes `results/report.html`.
 
-## Ranking
+For deterministic CI/development without network access:
 
-The operational score is bounded to `[0, 1]` and weights:
+```bash
+docker compose up --build pipeline-offline
+```
+
+## Existing inference benchmark
+
+The original all-city execution benchmark remains available:
+
+```bash
+docker compose up --build benchmark-real-cities
+docker compose up --build benchmark-offline
+```
+
+It is intentionally kept separate from the train/test protocol so old results remain reproducible.
+
+## Evaluation score
+
+Every strategy is ranked with the same hardware-independent operational score:
 
 | Component | Weight |
 |---|---:|
@@ -115,46 +143,71 @@ The operational score is bounded to `[0, 1]` and weights:
 | Coordination / low redundant coverage | 10% |
 | Communication availability | 5% |
 
-Runtime is reported separately because it depends on hardware. Safety-filter interventions are reported as useful diagnostics, while **actual incidents** are used in the score.
+Runtime is reported separately. Safety-filter interventions are diagnostics; actual incidents determine the safety term.
 
-## Data provenance and licensing
+## GRPO hypothesis and scientific integrity
 
-Real snapshots are obtained from OpenStreetMap with OSMnx and cached as a derived grid abstraction. Reports and manifests retain the required attribution:
+The intended research hypothesis is:
 
-> © OpenStreetMap contributors
+> Shared swarm memory + geographic frontier propagation + group-relative behavior selection should improve GRPO-Safe on difficult unseen-city search tasks.
 
-OpenStreetMap data is available under the Open Data Commons Open Database License. See `https://www.openstreetmap.org/copyright`.
+The repository tests that hypothesis without manipulating the ranking:
 
-The cache is intentionally excluded from Git so each user can create or refresh local snapshots and review the corresponding data obligations.
+- no test-city metric is used during training;
+- test cities are disjoint from train cities;
+- test start zones are unseen during training;
+- episodic swarm memory is reset between cities/episodes;
+- every baseline receives the same environment, seeds, agent count, safety monitor, and episode budget;
+- GRPO memory and propagation ablations isolate mechanism contribution;
+- confidence intervals are reported from independent held-out episodes;
+- the combined report explicitly shows the held-out winner even if it is not GRPO-Safe.
 
-## Local setup
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-python -m pip install --upgrade pip
-pip install -r requirements-dev.txt
-pytest -q
-```
+For a paper, use 27–30 independent training episodes and 20–30 test episodes per held-out city, archive `results/`, and report both checkpoint metadata and the OSM provenance manifest.
 
 ## Repository layout
 
 ```text
-configs/                    Multi-city benchmark configuration
-experiments/                Single-city and multi-city runners
-src/agents/                 SafeSwarm, BioSwarm, GRPO and MARL policies
-src/environment/            City ingestion, cache, and digital-twin simulation
-src/evaluation/             Metrics and ranking
-src/safety/                 Runtime safety rules and monitor
-tests/                      Unit and integration-oriented tests
-data/cache/                 Local OSM-derived snapshots (ignored)
-results/                    Generated benchmark artifacts
+configs/
+  real_cities.json
+  real_city_protocol.json
+experiments/
+  prepare_real_city_data.py
+  train_real_city_policies.py
+  test_real_city_policies.py
+  build_train_test_report.py
+  run_train_test_pipeline.py
+  run_city_benchmark.py
+src/
+  agents/
+    marl_baselines.py
+    trainable_policies.py
+  environment/
+  evaluation/
+  safety/
+  training/
+    geography.py
+tests/
+results/
+data/cache/
+docker-compose.yaml
 ```
 
-## Research use
+## Tests
 
-The benchmark identifies the strongest algorithm **under the configured cities and conditions**. It does not claim universal superiority. For publication-quality results, increase episodes, retain the generated manifest, report whether every city used real data, and run statistical analysis over the episode-level CSV.
+```bash
+docker compose up --build unit-test
+```
 
-## License
+The tests cover protocol separation, geographic spawn zones, GRPO memory propagation, checkpoint round-tripping, PPO residual updates, safety rules, city layers, ranking, and the original baselines. GitHub Actions also runs the offline prepare→train→test→combined-report smoke pipeline.
 
-The software is released under the MIT License. OpenStreetMap-derived data remains subject to the ODbL and its attribution requirements.
+## Data provenance and licensing
+
+Real snapshots come from OpenStreetMap through OSMnx. Reports and manifests retain the required attribution:
+
+> © OpenStreetMap contributors
+
+OpenStreetMap data is available under the Open Data Commons Open Database License. The software in this repository is released under the MIT License.
+
+## Research scope
+
+The repository supports reproducible comparative research under the configured cities, start zones, and operational score. It does **not** claim universal superiority of any algorithm, and the NumPy PPO residual should not be presented as a full deep-neural reproduction of the original IPPO/MAPPO/HAPPO papers. Its purpose is transparent, controlled policy learning within the SafeSwarm CityTwin benchmark.
