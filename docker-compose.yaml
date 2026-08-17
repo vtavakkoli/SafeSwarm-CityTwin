@@ -26,9 +26,13 @@ services:
       - --grid-size
       - ${GRID_SIZE:-40}
       - --episodes
-      - ${TRAIN_EPISODES:-54}
+      - ${TRAIN_EPISODES:-108}
       - --validation-episodes
-      - ${VALIDATION_EPISODES:-6}
+      - ${VALIDATION_EPISODES:-12}
+      - --validation-repeats
+      - ${VALIDATION_REPEATS:-2}
+      - --teacher-bootstrap-scenarios
+      - ${TEACHER_BOOTSTRAP_SCENARIOS:-9}
       - --max-steps
       - ${MAX_STEPS:-160}
       - --require-real-data
