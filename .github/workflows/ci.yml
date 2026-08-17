@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -25,12 +29,28 @@ jobs:
         run: pytest -q
       - name: Offline integration benchmark
         run: python experiments/run_city_benchmark.py --offline --quick --output-root results/ci-benchmark
-      - name: Offline train-test smoke pipeline
+      - name: Offline v3 train-test smoke pipeline
         run: |
           python experiments/run_train_test_pipeline.py --offline --quick
           test -f results/train/training_summary.csv
+          test -f results/train/validation_history.csv
+          test -f results/train/teacher_bootstrap.json
           test -f results/test/tables/overall_ranking.csv
           test -f results/report.html
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          train = json.loads(Path("results/train/manifest.json").read_text())
+          test = json.loads(Path("results/test/manifest.json").read_text())
+          assert "per-agent difference reward" in train["credit_assignment"]
+          assert train["teacher_bootstrap"].startswith("GRPO only")
+          assert test["training_version"] == "SafeSwarm PPO/GRPO v3"
+          assert "observable-only" in test["observation_contract"]
+          assert set(test["grpo_ablations"]) == {
+              "NoMemory", "NoPropagation", "NoLearnedBehavior"
+          }
+          PY
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         with:
