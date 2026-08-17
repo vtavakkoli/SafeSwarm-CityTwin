@@ -1,10 +1,10 @@
 """Compatibility entry point for the SafeSwarm real-city trainer.
 
-The implementation lives beside this file in ``train_real_city_policies_v3``.
-Keeping this entry point preserves all existing Docker and CI commands.
+The current implementation lives in ``train_real_city_policies_v4``. Keeping
+this stable entry point preserves Docker, CI and external reproduction commands.
 """
 
-from train_real_city_policies_v3 import main
+from train_real_city_policies_v4 import main
 
 
 if __name__ == "__main__":
