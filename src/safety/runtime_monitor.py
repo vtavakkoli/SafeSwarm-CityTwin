@@ -65,8 +65,10 @@ class RuntimeSafetyMonitor:
 
     def _return_guard_active(self, env: CityTwinEnvironment, agent_id: int) -> bool:
         state = env.agents[agent_id]
-        if state.done or state.position in env.base_stations:
+        if state.done:
             return False
+        if state.position in env.base_stations:
+            return state.battery_level <= float(getattr(env, "safe_park_battery", 18.0))
         distance = env.nearest_base_distance(state.position)
         move_cost = float(getattr(env, "move_energy_cost", 1.5))
         hard_reserve = distance * move_cost + 5.0
@@ -172,7 +174,7 @@ class RuntimeSafetyMonitor:
                 continue
 
             action = proposed_actions.get(aid, "STAY")
-            is_safe, violations, candidate = self.is_action_safe(env, aid, action, planned_positions)
+            is_safe, violations, _ = self.is_action_safe(env, aid, action, planned_positions)
             guarded_actions = self.safe_actions(env, aid, planned_positions, count_masked=False)
             guard_blocks = self._return_guard_active(env, aid) and action not in guarded_actions
 
