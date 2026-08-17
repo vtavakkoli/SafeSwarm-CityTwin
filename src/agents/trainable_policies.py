@@ -1,23 +1,22 @@
-"""Public registry for the trainable SafeSwarm policy implementations.
-
-The implementation is split into a reusable safety-aware PPO core and the GRPO
-swarm-memory extension. This module preserves the imports used by experiments and
-external users.
-"""
+"""Public registry for trainable SafeSwarm v3 policies."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from src.agents.grpo_memory_v2 import TrainableGRPOMemoryPolicy
+import numpy as np
+
+from src.agents.grpo_v3 import TrainableGRPOMemoryPolicy
+from src.agents.ppo_v3 import (
+    TrainableHAPPOPolicy,
+    TrainableIPPOPolicy,
+    TrainableMAPPOPolicy,
+)
 from src.agents.safe_ppo_core import (
     FEATURE_NAMES,
     VALUE_FEATURE_NAMES,
     PPOResidualMixin,
-    TrainableHAPPOPolicy,
-    TrainableIPPOPolicy,
-    TrainableMAPPOPolicy,
     feature_index,
 )
 
@@ -44,6 +43,9 @@ def _grpo_ablation(seed: int, path: Path, mode: str) -> TrainableGRPOMemoryPolic
     elif mode == "no_propagation":
         policy.propagation_steps = 0
         policy.residual_weights[feature_index("propagation_gradient")] = 0.0
+    elif mode == "no_learned_behavior":
+        policy.behavior_bias[:] = 0.0
+        policy.behavior_weights[:] = 0.0
     else:
         raise ValueError(f"Unknown GRPO ablation mode: {mode}")
     return policy
@@ -78,6 +80,9 @@ def evaluation_factories(seed: int, model_dir: str | Path | None = None) -> dict
         )
         factories["GRPO-Safe-Ablation-NoPropagation"] = (
             lambda path=grpo_path: _grpo_ablation(seed, path, "no_propagation")
+        )
+        factories["GRPO-Safe-Ablation-NoLearnedBehavior"] = (
+            lambda path=grpo_path: _grpo_ablation(seed, path, "no_learned_behavior")
         )
     return factories
 
