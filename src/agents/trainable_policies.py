@@ -1,4 +1,4 @@
-"""Public registry for trainable SafeSwarm v3 policies."""
+"""Public registry for trainable SafeSwarm v4 policies."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from src.agents.safe_ppo_core import (
     PPOResidualMixin,
     feature_index,
 )
+from src.agents.sparx_pattern import SPARXPolicy
 
 TRAINABLE_POLICY_CLASSES = {
     "GRPO-Safe": TrainableGRPOMemoryPolicy,
@@ -31,6 +32,11 @@ TRAINABLE_POLICY_CLASSES = {
 def checkpoint_path(model_dir: str | Path, strategy: str) -> Path:
     safe_name = strategy.lower().replace("-", "_")
     return Path(model_dir) / f"{safe_name}.json"
+
+
+def sparx_checkpoint_path(model_dir: str | Path, pattern: str | None = None) -> Path:
+    suffix = "" if pattern is None else f"_{pattern}"
+    return Path(model_dir) / f"sparx{suffix}_safe.json"
 
 
 def _grpo_ablation(seed: int, path: Path, mode: str) -> TrainableGRPOMemoryPolicy:
@@ -52,6 +58,13 @@ def _grpo_ablation(seed: int, path: Path, mode: str) -> TrainableGRPOMemoryPolic
 
 
 def evaluation_factories(seed: int, model_dir: str | Path | None = None) -> dict[str, Any]:
+    """Return fixed + trained factories for validation/held-out evaluation.
+
+    PPO checkpoints remain mandatory when ``model_dir`` is supplied. SPARX is
+    backward compatible: validation-selected SPARX checkpoints are loaded when
+    present, while older v3 checkpoint directories can still be evaluated.
+    """
+
     from src.agents.registry import strategy_factories
 
     factories = strategy_factories(seed=seed)
@@ -84,6 +97,24 @@ def evaluation_factories(seed: int, model_dir: str | Path | None = None) -> dict
         factories["GRPO-Safe-Ablation-NoLearnedBehavior"] = (
             lambda path=grpo_path: _grpo_ablation(seed, path, "no_learned_behavior")
         )
+
+    if model_dir:
+        selected = sparx_checkpoint_path(model_dir)
+        if selected.exists():
+            factories["SPARX-Safe"] = (
+                lambda path=selected: SPARXPolicy(
+                    seed=seed, model_path=path, strategy_name="SPARX-Safe"
+                )
+            )
+        for pattern, label in (("x", "X"), ("plus", "Plus"), ("star", "Star")):
+            path = sparx_checkpoint_path(model_dir, pattern)
+            if path.exists():
+                strategy = f"SPARX-{label}-Safe"
+                factories[strategy] = (
+                    lambda path=path, strategy=strategy: SPARXPolicy(
+                        seed=seed, model_path=path, strategy_name=strategy
+                    )
+                )
     return factories
 
 
@@ -95,7 +126,9 @@ __all__ = [
     "TrainableIPPOPolicy",
     "TrainableMAPPOPolicy",
     "TrainableHAPPOPolicy",
+    "SPARXPolicy",
     "TRAINABLE_POLICY_CLASSES",
     "checkpoint_path",
+    "sparx_checkpoint_path",
     "evaluation_factories",
 ]
