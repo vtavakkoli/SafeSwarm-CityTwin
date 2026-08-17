@@ -1,4 +1,4 @@
-"""Evaluate trained and fixed policies on held-out real cities and start zones."""
+"""Evaluate v4 trained and fixed policies on held-out real cities/start zones."""
 
 from __future__ import annotations
 
@@ -60,56 +60,78 @@ def _mean_column(frame: pd.DataFrame, name: str) -> float:
     return float(frame[name].mean()) if name in frame and not frame.empty else 0.0
 
 
+def _strategy_note(overall: pd.DataFrame, strategy: str) -> str:
+    frame = overall[overall["strategy"] == strategy]
+    if frame.empty:
+        return f"{strategy} was not present."
+    row = frame.iloc[0]
+    return (
+        f"{strategy}: rank {int(row['rank'])}, score {row['operational_score']:.3f} "
+        f"± {row['operational_score_ci95']:.3f} (95% CI), "
+        f"discovery {row['weighted_target_discovery']:.3f}, coverage {row['coverage_ratio']:.3f}, "
+        f"redundancy {row['redundant_coverage']:.3f}."
+    )
+
+
 def _report(
     overall: pd.DataFrame,
     records: pd.DataFrame,
     city_metadata: list[dict[str, Any]],
     integrity: dict[str, bool],
+    sparx_manifest: dict[str, Any],
     args: argparse.Namespace,
     path: Path,
 ) -> None:
     winner = overall.iloc[0]
     ranking = overall.round(4).to_html(index=False, classes="data", border=0)
     sources = pd.DataFrame(city_metadata).fillna("").to_html(index=False, classes="data", border=0)
-    grpo = overall[overall["strategy"] == "GRPO-Safe"]
-    grpo_note = "GRPO-Safe was not present."
-    mechanism_note = ""
+
+    grpo_note = _strategy_note(overall, "GRPO-Safe")
+    grpo_rows = records[records["strategy"] == "GRPO-Safe"]
+    mechanism_note = (
+        "Mean GRPO diagnostics: "
+        f"masked candidates={_mean_column(grpo_rows, 'safety_mask_rejections'):.1f}, "
+        f"forced fallbacks={_mean_column(grpo_rows, 'forced_fallbacks'):.2f}, "
+        f"safe returns={_mean_column(grpo_rows, 'safe_returns'):.2f}, "
+        f"memory coverage={_mean_column(grpo_rows, 'swarm_memory_coverage'):.3f}."
+    )
+    ablations = overall[overall["strategy"].str.startswith("GRPO-Safe-Ablation")]
     ablation_note = ""
-    if not grpo.empty:
-        row = grpo.iloc[0]
-        grpo_note = (
-            f"GRPO-Safe held-out rank: {int(row['rank'])}; score "
-            f"{row['operational_score']:.3f} ± {row['operational_score_ci95']:.3f} (95% CI)."
-        )
-        grpo_rows = records[records["strategy"] == "GRPO-Safe"]
-        mechanism_note = (
-            "Mean GRPO diagnostics: "
-            f"masked candidates={_mean_column(grpo_rows, 'safety_mask_rejections'):.1f}, "
-            f"forced fallbacks={_mean_column(grpo_rows, 'forced_fallbacks'):.2f}, "
-            f"return-guard interventions={_mean_column(grpo_rows, 'return_guard_interventions'):.2f}, "
-            f"safe returns={_mean_column(grpo_rows, 'safe_returns'):.2f}, "
-            f"memory coverage={_mean_column(grpo_rows, 'swarm_memory_coverage'):.3f}, "
-            f"state-behavior norm={_mean_column(grpo_rows, 'behavior_state_weight_norm'):.4f}."
-        )
-        ablations = overall[overall["strategy"].str.startswith("GRPO-Safe-Ablation")]
-        if not ablations.empty:
-            parts = [
-                f"{r['strategy'].replace('GRPO-Safe-Ablation-', '')}={r['operational_score']:.3f}"
-                for _, r in ablations.sort_values("strategy").iterrows()
-            ]
-            ablation_note = "GRPO mechanism ablations: " + ", ".join(parts) + "."
+    if not ablations.empty:
+        parts = [
+            f"{r['strategy'].replace('GRPO-Safe-Ablation-', '')}={r['operational_score']:.3f}"
+            for _, r in ablations.sort_values("strategy").iterrows()
+        ]
+        ablation_note = "GRPO mechanism ablations: " + ", ".join(parts) + "."
+
+    selected_pattern = str(sparx_manifest.get("selected_pattern", "not available"))
+    sparx_note = _strategy_note(overall, "SPARX-Safe")
+    pattern_notes = " ".join(
+        _strategy_note(overall, f"SPARX-{label}-Safe")
+        for label in ("X", "Plus", "Star")
+        if not overall[overall["strategy"] == f"SPARX-{label}-Safe"].empty
+    )
+    sparx_rows = records[records["strategy"] == "SPARX-Safe"]
+    sparx_diag = (
+        "Mean SPARX diagnostics: "
+        f"memory coverage={_mean_column(sparx_rows, 'sparx_memory_coverage'):.3f}, "
+        f"probability entropy={_mean_column(sparx_rows, 'sparx_probability_entropy'):.3f}, "
+        f"region count={_mean_column(sparx_rows, 'sparx_region_count'):.1f}, "
+        f"goal switches={_mean_column(sparx_rows, 'sparx_goal_switches'):.1f}."
+    )
 
     checks = " · ".join(
         f"{escape(k)}={'PASS' if v else 'FAIL'}" for k, v in integrity.items()
     )
     html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SafeSwarm v3 Held-out Real-City Test</title>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SafeSwarm v4 Held-out Real-City Test</title>
 <style>body{{font:15px/1.5 Inter,system-ui,sans-serif;margin:0;background:#f6f8fb;color:#172033}}header{{padding:36px 5vw;background:#172033;color:white}}main{{max-width:1500px;margin:auto;padding:22px}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}}.card,section{{background:white;border:1px solid #dde3ec;border-radius:13px;padding:18px;margin:14px 0}}.card strong{{display:block;font-size:24px}}table.data{{border-collapse:collapse;width:100%;font-size:12px}}.data th,.data td{{padding:8px;border-bottom:1px solid #e5e9f0;text-align:right}}.data th:first-child,.data td:first-child{{text-align:left}}.good{{color:#087830;font-weight:700}}code{{background:#eef2ff;padding:2px 5px;border-radius:5px}}</style></head><body>
-<header><h1>SafeSwarm v3 · Held-out Real-City Test</h1><p>Observable-only policies · unseen city + unseen geographic starting zones</p></header><main><div class="cards">
-<div class="card">Winner<strong>{escape(str(winner['strategy']))}</strong>score {winner['operational_score']:.3f}</div><div class="card">Split<strong>{escape(args.split)}</strong>{records['city'].nunique()} city/cities</div><div class="card">Runs<strong>{len(records)}</strong>{records['strategy'].nunique()} algorithms</div><div class="card">Integrity<strong class="good">{'PASS' if all(integrity.values()) else 'FAIL'}</strong>{checks}</div></div>
-<section><h2>Fair observation contract</h2><p>All primary strategies choose actions from runtime-observable evidence only: sensed observations, uncertainty/frontiers, pheromones, visits, swarm state, battery and known map constraints. Ground-truth mission coordinates and hidden priority labels are reserved for scoring. This removes the oracle advantage present in older fixed-baseline runs.</p></section>
-<section><h2>GRPO-Safe hypothesis</h2><p>{escape(grpo_note)}</p><p>{escape(mechanism_note)}</p><p>{escape(ablation_note)}</p><p>The selected v3 checkpoint uses per-agent credit, entropy-regularized minibatch PPO, state-conditioned GRPO behavior selection, signed swarm memory, geographic propagation and proactive safe return. The held-out ranking remains unmodified.</p></section>
-<section><h2>Held-out ranking</h2>{ranking}</section><section><h2>Real-data provenance</h2><p>Attribution: {escape(OSM_ATTRIBUTION)}</p>{sources}</section><section><h2>Reproduce</h2><p><code>docker compose up --build test</code></p></section></main></body></html>"""
+<header><h1>SafeSwarm v4 · Held-out Real-City Test</h1><p>Observable-only policies · robust validation selection · unseen city + unseen starts</p></header><main><div class="cards">
+<div class="card">Winner<strong>{escape(str(winner['strategy']))}</strong>score {winner['operational_score']:.3f}</div><div class="card">SPARX selection<strong>{escape(selected_pattern)}</strong>chosen on validation only</div><div class="card">Runs<strong>{len(records)}</strong>{records['strategy'].nunique()} algorithms</div><div class="card">Integrity<strong class="good">{'PASS' if all(integrity.values()) else 'FAIL'}</strong>{checks}</div></div>
+<section><h2>Fair observation contract</h2><p>All primary strategies choose actions from runtime-observable evidence only. Hidden mission coordinates and priority labels are reserved for scoring.</p></section>
+<section><h2>SPARX pattern-memory hypothesis</h2><p>{escape(sparx_note)}</p><p>{escape(sparx_diag)}</p><p>{escape(pattern_notes)}</p><p><strong>Important:</strong> the selected X/Plus/Star pattern and all SPARX weights were chosen using training + validation only. The held-out X/Plus/Star rows are mechanism analysis, not model selection.</p></section>
+<section><h2>GRPO-Safe</h2><p>{escape(grpo_note)}</p><p>{escape(mechanism_note)}</p><p>{escape(ablation_note)}</p></section>
+<section><h2>Held-out ranking</h2>{ranking}</section><section><h2>Real-data provenance</h2><p>Attribution: {escape(OSM_ATTRIBUTION)}</p>{sources}</section><section><h2>Reproduce</h2><p><code>docker compose up --build pipeline</code></p></section></main></body></html>"""
     path.write_text(html, encoding="utf-8")
 
 
@@ -127,6 +149,7 @@ def main() -> None:
         raise RuntimeError(f"Protocol integrity check failed: {integrity}")
     cities = select_cities(protocol, args.split)
     zones = start_zones_for_split(protocol, args.split)
+
     prepared: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
     metadata_records: list[dict[str, Any]] = []
     for city in cities:
@@ -141,6 +164,13 @@ def main() -> None:
             raise RuntimeError(f"Test city {city['name']} is not real data: {metadata}")
         prepared[city["name"]] = (city, layers)
         metadata_records.append(metadata)
+
+    sparx_manifest_path = Path(args.model_dir).parent / "sparx_manifest.json"
+    sparx_manifest = (
+        json.loads(sparx_manifest_path.read_text(encoding="utf-8"))
+        if sparx_manifest_path.exists()
+        else {}
+    )
 
     records: list[dict[str, Any]] = []
     for city in cities:
@@ -182,6 +212,14 @@ def main() -> None:
                         "learned_memory_weight": diagnostics.get("learned_memory_weight", 0.0),
                         "learned_frontier_weight": diagnostics.get("learned_frontier_weight", 0.0),
                         "learned_propagation_weight": diagnostics.get("learned_propagation_weight", 0.0),
+                        "sparx_pattern": diagnostics.get("sparx_pattern", ""),
+                        "sparx_memory_coverage": diagnostics.get("sparx_memory_coverage", 0.0),
+                        "sparx_memory_peak": diagnostics.get("sparx_memory_peak", 0.0),
+                        "sparx_assignment_refreshes": diagnostics.get("sparx_assignment_refreshes", 0),
+                        "sparx_goal_switches": diagnostics.get("sparx_goal_switches", 0),
+                        "sparx_probability_entropy": diagnostics.get("sparx_probability_entropy", 0.0),
+                        "sparx_probability_peak": diagnostics.get("sparx_probability_peak", 0.0),
+                        "sparx_region_count": diagnostics.get("sparx_region_count", 0),
                     }
                 )
                 records.append(row)
@@ -202,19 +240,27 @@ def main() -> None:
     frame.to_csv(tables / "episode_results.csv", index=False)
     city_summary.to_csv(tables / "city_ranking.csv", index=False)
     overall.to_csv(tables / "overall_ranking.csv", index=False)
+
     manifest = {
         "generated_utc": datetime.now(timezone.utc).isoformat(),
-        "arguments": vars(args), "protocol_integrity": integrity,
-        "cities": metadata_records, "winner": overall.iloc[0].to_dict(),
-        "test_is_held_out": args.split == "test", "data_attribution": OSM_ATTRIBUTION,
-        "training_version": "SafeSwarm PPO/GRPO v3",
+        "arguments": vars(args),
+        "protocol_integrity": integrity,
+        "cities": metadata_records,
+        "winner": overall.iloc[0].to_dict(),
+        "test_is_held_out": args.split == "test",
+        "data_attribution": OSM_ATTRIBUTION,
+        "training_version": "SafeSwarm PPO/GRPO/SPARX v4",
         "observation_contract": "observable-only primary policies; hidden target labels reserved for evaluation",
-        "grpo_ablations": [
-            "NoMemory", "NoPropagation", "NoLearnedBehavior"
-        ],
+        "checkpoint_selection": "validation-only; held-out test never selects PPO/GRPO/SPARX weights or pattern",
+        "grpo_ablations": ["NoMemory", "NoPropagation", "NoLearnedBehavior"],
+        "sparx_algorithm": "SPARX: Swarm Probability-map Allocation & Region eXploration",
+        "sparx_selected_pattern": sparx_manifest.get("selected_pattern"),
+        "sparx_patterns_reported": ["X", "Plus", "Star"],
     }
-    (output / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
-    _report(overall, frame, metadata_records, integrity, args, output / "report.html")
+    (output / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, default=str), encoding="utf-8"
+    )
+    _report(overall, frame, metadata_records, integrity, sparx_manifest, args, output / "report.html")
 
 
 if __name__ == "__main__":

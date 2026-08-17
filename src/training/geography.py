@@ -110,6 +110,7 @@ def validate_protocol(protocol: Mapping[str, Any]) -> dict[str, bool]:
     validation_cities = {city["name"] for city in select_cities(protocol, "validation")}
     test_cities = {city["name"] for city in select_cities(protocol, "test")}
     train_zones = set(start_zones_for_split(protocol, "train"))
+    validation_zones = set(start_zones_for_split(protocol, "validation"))
     test_zones = set(start_zones_for_split(protocol, "test"))
     return {
         "city_splits_disjoint": not (
@@ -117,5 +118,7 @@ def validate_protocol(protocol: Mapping[str, Any]) -> dict[str, bool]:
             or train_cities & test_cities
             or validation_cities & test_cities
         ),
+        "validation_start_zones_unseen_during_training": not (train_zones & validation_zones),
+        "validation_start_zones_disjoint_from_test": not (validation_zones & test_zones),
         "test_start_zones_unseen_during_training": not (train_zones & test_zones),
     }
