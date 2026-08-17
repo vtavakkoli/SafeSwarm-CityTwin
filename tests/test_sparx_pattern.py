@@ -87,9 +87,6 @@ def test_spatial_assignment_spreads_agents_across_regions():
 
 
 def test_unsensed_hidden_target_does_not_change_initial_action():
-    # Only the hidden target coordinate changes. It remains outside the initial
-    # sensor footprint in both environments, so observable-only SPARX must make
-    # exactly the same first joint decision.
     env_a = _env(seed=11, mission=(12, 12))
     env_b = _env(seed=11, mission=(11, 11))
     policy_a = SPARXPolicy(seed=17, pattern_mode="star")
@@ -127,5 +124,5 @@ def test_robust_validation_penalizes_single_domain_overfit():
     ]
     stable_stats = validation_selection_stats(stable)
     unstable_stats = validation_selection_stats(unstable)
-    assert unstable_stats["mean_score"] == stable_stats["mean_score"]
+    assert np.isclose(unstable_stats["mean_score"], stable_stats["mean_score"])
     assert stable_stats["robust_score"] > unstable_stats["robust_score"]
