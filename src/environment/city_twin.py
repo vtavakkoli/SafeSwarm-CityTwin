@@ -32,10 +32,18 @@ class AgentState:
     trajectory_history: List[Cell] = field(default_factory=list)
     distance_travelled: int = 0
     done: bool = False
+    safe_returned: bool = False
 
 
 class CityTwinEnvironment:
-    """Grid abstraction backed by one immutable city-layer snapshot per episode."""
+    """Grid abstraction backed by one immutable city-layer snapshot per episode.
+
+    Energy is calibrated to the configured mission horizon instead of making
+    battery exhaustion inevitable before a 160-step episode can finish. Agents
+    that return to a base with low reserve are parked safely and stop consuming
+    energy. The episode also terminates once all mission cells are discovered,
+    matching the natural completion condition used by BioSwarm.
+    """
 
     def __init__(
         self,
@@ -52,11 +60,17 @@ class CityTwinEnvironment:
         max_steps: Optional[int] = None,
         communication_dropout_prob: float = 0.03,
         sensor_radius: int = 1,
+        move_energy_cost: float = 0.55,
+        idle_energy_cost: float = 0.10,
+        safe_park_battery: float = 18.0,
+        stop_when_all_missions_found: bool = True,
     ) -> None:
         if grid_size < 8:
             raise ValueError("grid_size must be at least 8")
         if n_agents < 1:
             raise ValueError("n_agents must be positive")
+        if move_energy_cost <= 0 or idle_energy_cost < 0:
+            raise ValueError("energy costs must be non-negative and movement must cost energy")
 
         self.grid_size = int(grid_size)
         self.n_agents = int(n_agents)
@@ -65,6 +79,10 @@ class CityTwinEnvironment:
         self.radius_m = int(radius_m)
         self.communication_dropout_prob = float(communication_dropout_prob)
         self.sensor_radius = int(sensor_radius)
+        self.move_energy_cost = float(move_energy_cost)
+        self.idle_energy_cost = float(idle_energy_cost)
+        self.safe_park_battery = float(np.clip(safe_park_battery, 1.0, 50.0))
+        self.stop_when_all_missions_found = bool(stop_when_all_missions_found)
         self.rng = np.random.default_rng(seed)
 
         source_layers = dict(layers) if layers is not None else load_real_city_layers(
@@ -119,6 +137,10 @@ class CityTwinEnvironment:
     def traversable_cell_count(self) -> int:
         blocked = self.obstacles | self.restricted_zones
         return max(1, self.grid_size * self.grid_size - len(blocked))
+
+    @property
+    def safe_return_count(self) -> int:
+        return int(sum(state.safe_returned for state in self.agents.values()))
 
     def reset(self) -> Dict[int, AgentState]:
         self.steps = 0
@@ -197,10 +219,13 @@ class CityTwinEnvironment:
         return float(self.uncertainty_map[cell])
 
     def remaining_missions(self) -> Set[Cell]:
+        """Evaluation helper. Policies in the primary benchmark must not call it."""
         return self.mission_zones - self.discovered_missions
 
     def update_communications(self) -> None:
         for agent in self.agents.values():
+            if agent.done:
+                continue
             if self.rng.random() < self.communication_dropout_prob:
                 agent.communication_status = False
                 agent.comm_loss_steps += 1
@@ -235,11 +260,13 @@ class CityTwinEnvironment:
 
         proposed: Dict[int, Cell] = {}
         for aid, state in self.agents.items():
-            action = actions.get(aid, "STAY")
+            action = "STAY" if state.done else actions.get(aid, "STAY")
             proposed[aid] = self.next_position(state.position, action)
 
         counts: Dict[Cell, int] = {}
-        for candidate in proposed.values():
+        for aid, candidate in proposed.items():
+            if self.agents[aid].done:
+                continue
             counts[candidate] = counts.get(candidate, 0) + 1
         self.actual_collisions += sum(count - 1 for count in counts.values() if count > 1)
 
@@ -260,28 +287,41 @@ class CityTwinEnvironment:
             if state.position in self.restricted_zones and state.position != old_position:
                 self.actual_restricted_entries += 1
 
-            energy_cost = 1.5 if moved else 0.5
+            energy_cost = self.move_energy_cost if moved else self.idle_energy_cost
             state.battery_level = max(0.0, state.battery_level - energy_cost)
             state.trajectory_history.append(state.position)
             self._record_visit(state.position)
             self._sense_from(state.position)
-            self.pheromone_map[state.position] += 0.15 + self.priority_map[state.position]
+            self.pheromone_map[state.position] += 0.15 + self.observation_map[state.position]
 
-            if state.position in self.mission_zones:
+            if state.position in self.base_stations and state.battery_level <= self.safe_park_battery:
+                state.current_task = "safe_parked"
+                state.safe_returned = True
+                state.done = True
+            elif state.position in self.mission_zones:
                 state.current_task = "mission"
-            elif state.battery_level < 25:
+            elif state.battery_level < 30:
                 state.current_task = "return_to_base"
             else:
                 state.current_task = "explore"
+
             if state.battery_level <= 0:
                 state.done = True
+                state.safe_returned = False
+                state.current_task = "battery_depleted"
 
         coverage_ratio = len(self.visited - self.restricted_zones) / self.traversable_cell_count
         target_discovery = len(self.discovered_missions) / max(1, len(self.mission_zones))
-        done = self.steps >= self.max_steps or all(a.done for a in self.agents.values())
+        all_missions_found = bool(self.mission_zones) and len(self.discovered_missions) >= len(self.mission_zones)
+        done = (
+            self.steps >= self.max_steps
+            or all(a.done for a in self.agents.values())
+            or (self.stop_when_all_missions_found and all_missions_found)
+        )
         return {
             "coverage_ratio": float(np.clip(coverage_ratio, 0.0, 1.0)),
             "target_discovery_rate": float(target_discovery),
+            "safe_returns": float(self.safe_return_count),
             "done": float(done),
         }
 

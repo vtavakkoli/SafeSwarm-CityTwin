@@ -1,11 +1,20 @@
-"""Safety-wrapped bio-inspired policies adapted from BioSwarm-Urban-Monitoring."""
+"""Safety-wrapped bio-inspired policies adapted from BioSwarm-Urban-Monitoring.
+
+The primary benchmark is partially observable. These baselines therefore use
+only sensed evidence, uncertainty, pheromone and visit history for movement;
+true mission coordinates and ground-truth priority labels are evaluation-only.
+"""
 
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Dict
 
 import numpy as np
 
+from src.agents.observable_utils import (
+    observable_priority,
+    observable_target_distance,
+)
 from src.environment.city_twin import Cell, CityTwinEnvironment
 from src.safety.runtime_monitor import RuntimeSafetyMonitor
 
@@ -18,13 +27,6 @@ def _congestion(cell: Cell, agent_id: int, positions: Dict[int, Cell]) -> float:
         distance = float(np.hypot(cell[0] - other_pos[0], cell[1] - other_pos[1]))
         total += 2.0 if distance < 1e-9 else 1.0 / distance
     return total
-
-
-def _target_distance(env: CityTwinEnvironment, cell: Cell) -> float:
-    targets = env.remaining_missions() or env.mission_zones
-    if not targets:
-        return 0.0
-    return min(float(np.hypot(tx - cell[0], ty - cell[1])) for tx, ty in targets)
 
 
 class _SafetyWrappedPolicy:
@@ -40,6 +42,9 @@ class _SafetyWrappedPolicy:
         positions = env.get_positions()
         proposed: Dict[int, str] = {}
         for aid, state in env.agents.items():
+            if state.done:
+                proposed[aid] = "STAY"
+                continue
             candidate = self._propose(env, aid, positions)
             proposed[aid] = env.cell_to_action(state.position, candidate)
         return self.monitor.filter_actions(env, proposed)
@@ -70,15 +75,17 @@ class AntSwarmPolicy(_SafetyWrappedPolicy):
         for cell in env.get_neighbors(current):
             visits = float(env.visit_counts[cell])
             novelty = 1.0 / (1.0 + visits)
-            priority = float(env.priority_map[cell])
+            priority = observable_priority(env, cell)
+            uncertainty = float(env.uncertainty_map[cell])
             pheromone = float(env.pheromone_map[cell])
             score = (
                 self.explore_weight * novelty
+                + 0.55 * uncertainty * novelty
                 - self.revisit_penalty * visits
                 + self.risk_weight * priority
-                + 0.45 * pheromone
+                + 0.45 * pheromone * novelty
                 - self.cluster_penalty * _congestion(cell, agent_id, positions)
-                - 0.04 * _target_distance(env, cell)
+                - 0.025 * observable_target_distance(env, cell)
                 - 8.0 * float(cell in env.restricted_zones)
             )
             if score > best_score:
@@ -111,7 +118,7 @@ class BeeSwarmPolicy(_SafetyWrappedPolicy):
         best, best_score = current, float("-inf")
 
         for cell in neighbors:
-            priority = float(env.priority_map[cell])
+            priority = observable_priority(env, cell)
             uncertainty = float(env.uncertainty_map[cell])
             novelty = 1.0 / (1.0 + float(env.visit_counts[cell]))
             shared_quality = float(env.shared_quality_map[cell])
@@ -135,7 +142,7 @@ class BeeSwarmPolicy(_SafetyWrappedPolicy):
                 + theta * role_priority
                 - eta * movement_cost
                 - rho * congestion
-                - 0.04 * _target_distance(env, cell)
+                - 0.025 * observable_target_distance(env, cell)
                 - 8.0 * float(cell in env.restricted_zones)
             )
             if score > best_score:
@@ -143,7 +150,7 @@ class BeeSwarmPolicy(_SafetyWrappedPolicy):
 
         if role == "onlooker":
             previous = self.stagnation_counter.get(agent_id, 0)
-            if env.priority_map[best] <= env.priority_map[current]:
+            if observable_priority(env, best) <= observable_priority(env, current):
                 self.stagnation_counter[agent_id] = previous + 1
             else:
                 self.stagnation_counter[agent_id] = 0
@@ -166,11 +173,12 @@ class PSOSwarmPolicy(_SafetyWrappedPolicy):
 
     @staticmethod
     def _utility(env: CityTwinEnvironment, cell: Cell) -> float:
+        novelty = 1.0 / (1.0 + float(env.visit_counts[cell]))
         return float(
-            1.5 * env.priority_map[cell]
-            + 0.65 * env.uncertainty_map[cell]
-            + 0.35 / (1.0 + env.visit_counts[cell])
-            + 0.2 * env.pheromone_map[cell]
+            1.5 * observable_priority(env, cell)
+            + 0.75 * env.uncertainty_map[cell] * novelty
+            + 0.35 * novelty
+            + 0.2 * env.pheromone_map[cell] * novelty
         )
 
     def _propose(self, env: CityTwinEnvironment, agent_id: int, positions: Dict[int, Cell]) -> Cell:
@@ -206,14 +214,14 @@ class PSOSwarmPolicy(_SafetyWrappedPolicy):
 
 
 class UncertaintyAwareBeeAntSwarmPolicy(_SafetyWrappedPolicy):
-    """Hybrid bee-ant policy with uncertainty, pheromone, target and safety awareness."""
+    """Hybrid bee-ant policy using only runtime-observable city evidence."""
 
     name = "UA-HBAS-Safe"
 
     @staticmethod
     def _role(env: CityTwinEnvironment, agent_id: int) -> str:
         global_uncertainty = float(np.mean(env.uncertainty_map))
-        priority_evidence = float(np.mean(env.priority_map > 0.45))
+        priority_evidence = float(np.mean(env.observation_map > 0.45))
         scout_share = min(0.45, 0.20 + 0.45 * global_uncertainty)
         employed_share = min(0.60, 0.30 + 1.20 * priority_evidence)
         ratio = agent_id / max(1, len(env.agents))
@@ -229,14 +237,14 @@ class UncertaintyAwareBeeAntSwarmPolicy(_SafetyWrappedPolicy):
         best, best_score = current, float("-inf")
 
         for cell in env.get_neighbors(current):
-            priority = float(env.priority_map[cell])
+            priority = observable_priority(env, cell)
             uncertainty = float(env.uncertainty_map[cell])
             pheromone = float(env.pheromone_map[cell])
             novelty = 1.0 / (1.0 + float(env.visit_counts[cell]))
             shared_quality = float(env.shared_quality_map[cell])
             movement_cost = float(cell != current)
             congestion = _congestion(cell, agent_id, positions)
-            target_dist = _target_distance(env, cell)
+            target_dist = observable_target_distance(env, cell)
 
             if role == "scout":
                 alpha, beta, gamma, delta, theta, kappa, eta, rho = 1.0, 1.5, 0.25, 1.7, 1.0, 0.45, 0.4, 0.45
@@ -257,7 +265,7 @@ class UncertaintyAwareBeeAntSwarmPolicy(_SafetyWrappedPolicy):
                 + kappa * shared_quality
                 - eta * movement_cost
                 - rho * congestion
-                - 0.10 * target_dist
+                - 0.06 * target_dist
                 - 10.0 * float(cell in env.restricted_zones)
             )
             if score > best_score:

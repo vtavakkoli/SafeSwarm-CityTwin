@@ -56,6 +56,10 @@ def _ci95(values: pd.Series) -> float:
     return float(1.96 * values.std(ddof=1) / np.sqrt(n))
 
 
+def _mean_column(frame: pd.DataFrame, name: str) -> float:
+    return float(frame[name].mean()) if name in frame and not frame.empty else 0.0
+
+
 def _report(
     overall: pd.DataFrame,
     records: pd.DataFrame,
@@ -70,31 +74,42 @@ def _report(
     grpo = overall[overall["strategy"] == "GRPO-Safe"]
     grpo_note = "GRPO-Safe was not present."
     mechanism_note = ""
+    ablation_note = ""
     if not grpo.empty:
-        gr = grpo.iloc[0]
+        row = grpo.iloc[0]
         grpo_note = (
-            f"GRPO-Safe held-out rank: {int(gr['rank'])}; score "
-            f"{gr['operational_score']:.3f} ± {gr['operational_score_ci95']:.3f} (95% CI). "
-            "Its score is computed by the same operational metric as every baseline; "
-            "no winner bonus is applied."
+            f"GRPO-Safe held-out rank: {int(row['rank'])}; score "
+            f"{row['operational_score']:.3f} ± {row['operational_score_ci95']:.3f} (95% CI)."
         )
         grpo_rows = records[records["strategy"] == "GRPO-Safe"]
-        if not grpo_rows.empty:
-            mechanism_note = (
-                "Mean GRPO diagnostics: "
-                f"masked candidates={grpo_rows['safety_mask_rejections'].mean():.1f}, "
-                f"runtime fallbacks={grpo_rows['forced_fallbacks'].mean():.2f}, "
-                f"memory coverage={grpo_rows['swarm_memory_coverage'].mean():.3f}."
-            )
+        mechanism_note = (
+            "Mean GRPO diagnostics: "
+            f"masked candidates={_mean_column(grpo_rows, 'safety_mask_rejections'):.1f}, "
+            f"forced fallbacks={_mean_column(grpo_rows, 'forced_fallbacks'):.2f}, "
+            f"return-guard interventions={_mean_column(grpo_rows, 'return_guard_interventions'):.2f}, "
+            f"safe returns={_mean_column(grpo_rows, 'safe_returns'):.2f}, "
+            f"memory coverage={_mean_column(grpo_rows, 'swarm_memory_coverage'):.3f}, "
+            f"state-behavior norm={_mean_column(grpo_rows, 'behavior_state_weight_norm'):.4f}."
+        )
+        ablations = overall[overall["strategy"].str.startswith("GRPO-Safe-Ablation")]
+        if not ablations.empty:
+            parts = [
+                f"{r['strategy'].replace('GRPO-Safe-Ablation-', '')}={r['operational_score']:.3f}"
+                for _, r in ablations.sort_values("strategy").iterrows()
+            ]
+            ablation_note = "GRPO mechanism ablations: " + ", ".join(parts) + "."
+
     checks = " · ".join(
         f"{escape(k)}={'PASS' if v else 'FAIL'}" for k, v in integrity.items()
     )
     html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SafeSwarm Held-out Real-City Test</title>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SafeSwarm v3 Held-out Real-City Test</title>
 <style>body{{font:15px/1.5 Inter,system-ui,sans-serif;margin:0;background:#f6f8fb;color:#172033}}header{{padding:36px 5vw;background:#172033;color:white}}main{{max-width:1500px;margin:auto;padding:22px}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}}.card,section{{background:white;border:1px solid #dde3ec;border-radius:13px;padding:18px;margin:14px 0}}.card strong{{display:block;font-size:24px}}table.data{{border-collapse:collapse;width:100%;font-size:12px}}.data th,.data td{{padding:8px;border-bottom:1px solid #e5e9f0;text-align:right}}.data th:first-child,.data td:first-child{{text-align:left}}.good{{color:#087830;font-weight:700}}code{{background:#eef2ff;padding:2px 5px;border-radius:5px}}</style></head><body>
-<header><h1>Held-out Real-City Test</h1><p>Unseen city + unseen geographic starting zones</p></header><main><div class="cards">
+<header><h1>SafeSwarm v3 · Held-out Real-City Test</h1><p>Observable-only policies · unseen city + unseen geographic starting zones</p></header><main><div class="cards">
 <div class="card">Winner<strong>{escape(str(winner['strategy']))}</strong>score {winner['operational_score']:.3f}</div><div class="card">Split<strong>{escape(args.split)}</strong>{records['city'].nunique()} city/cities</div><div class="card">Runs<strong>{len(records)}</strong>{records['strategy'].nunique()} algorithms</div><div class="card">Integrity<strong class="good">{'PASS' if all(integrity.values()) else 'FAIL'}</strong>{checks}</div></div>
-<section><h2>GRPO-Safe hypothesis</h2><p>{escape(grpo_note)}</p><p>{escape(mechanism_note)}</p><p>The test does not assume GRPO-Safe must win. The selected checkpoint uses safety-masked PPO, learned GRPO behavior selection, signed swarm memory and frontier propagation; the held-out test and the mechanism ablations decide whether those additions improve generalization.</p></section><section><h2>Held-out ranking</h2>{ranking}</section><section><h2>Real-data provenance</h2><p>Attribution: {escape(OSM_ATTRIBUTION)}</p>{sources}</section><section><h2>Reproduce</h2><p><code>docker compose up --build test</code></p></section></main></body></html>"""
+<section><h2>Fair observation contract</h2><p>All primary strategies choose actions from runtime-observable evidence only: sensed observations, uncertainty/frontiers, pheromones, visits, swarm state, battery and known map constraints. Ground-truth mission coordinates and hidden priority labels are reserved for scoring. This removes the oracle advantage present in older fixed-baseline runs.</p></section>
+<section><h2>GRPO-Safe hypothesis</h2><p>{escape(grpo_note)}</p><p>{escape(mechanism_note)}</p><p>{escape(ablation_note)}</p><p>The selected v3 checkpoint uses per-agent credit, entropy-regularized minibatch PPO, state-conditioned GRPO behavior selection, signed swarm memory, geographic propagation and proactive safe return. The held-out ranking remains unmodified.</p></section>
+<section><h2>Held-out ranking</h2>{ranking}</section><section><h2>Real-data provenance</h2><p>Attribution: {escape(OSM_ATTRIBUTION)}</p>{sources}</section><section><h2>Reproduce</h2><p><code>docker compose up --build test</code></p></section></main></body></html>"""
     path.write_text(html, encoding="utf-8")
 
 
@@ -116,12 +131,9 @@ def main() -> None:
     metadata_records: list[dict[str, Any]] = []
     for city in cities:
         layers = load_real_city_layers(
-            city["place"],
-            args.grid_size,
-            args.seed,
+            city["place"], args.grid_size, args.seed,
             radius_m=int(city.get("radius_m", 1400)),
-            cache_dir=args.cache_dir,
-            allow_network=not args.offline,
+            cache_dir=args.cache_dir, allow_network=not args.offline,
         )
         metadata = dict(layers.get("metadata", {}))
         metadata.update({"city": city["name"], "split": args.split})
@@ -137,64 +149,45 @@ def main() -> None:
             episode_seed = args.seed + episode
             zone = zones[episode % len(zones)]
             zoned_layers = apply_start_zone(layers, args.grid_size, zone)
-            for strategy, factory in evaluation_factories(
-                episode_seed, args.model_dir
-            ).items():
+            for strategy, factory in evaluation_factories(episode_seed, args.model_dir).items():
                 env = CityTwinEnvironment(
-                    grid_size=args.grid_size,
-                    n_agents=args.agents,
-                    seed=episode_seed,
-                    place_name=city_info["place"],
-                    radius_m=int(city_info.get("radius_m", 1400)),
-                    layers=zoned_layers,
-                    max_steps=args.max_steps,
-                    allow_network=False,
+                    grid_size=args.grid_size, n_agents=args.agents, seed=episode_seed,
+                    place_name=city_info["place"], radius_m=int(city_info.get("radius_m", 1400)),
+                    layers=zoned_layers, max_steps=args.max_steps, allow_network=False,
                 )
                 policy = factory()
                 metrics = run_episode(env, policy)
                 row = metrics.to_dict(
-                    strategy=strategy,
-                    episode=episode,
-                    split=args.split,
-                    city=city_info["name"],
-                    place=city_info["place"],
-                    start_zone=zone,
-                    data_source=env.data_source,
-                    agents=args.agents,
-                    grid_size=args.grid_size,
-                    steps=env.steps,
-                    seed=episode_seed,
+                    strategy=strategy, episode=episode, split=args.split,
+                    city=city_info["name"], place=city_info["place"], start_zone=zone,
+                    data_source=env.data_source, agents=args.agents, grid_size=args.grid_size,
+                    steps=env.steps, seed=episode_seed,
                 )
                 row["operational_score"] = episode_operational_score(row)
                 diagnostics = policy.diagnostics() if hasattr(policy, "diagnostics") else {}
-                row["checkpoint"] = diagnostics.get("checkpoint")
-                row["ppo_residual_weight_norm"] = diagnostics.get(
-                    "ppo_residual_weight_norm", 0.0
-                )
-                row["critic_weight_norm"] = diagnostics.get("critic_weight_norm", 0.0)
-                row["behavior_weight_norm"] = diagnostics.get("behavior_weight_norm", 0.0)
-                row["safety_mask_rejections"] = diagnostics.get(
-                    "safety_mask_rejections", 0
-                )
-                row["forced_fallbacks"] = diagnostics.get("forced_fallbacks", 0)
-                row["swarm_memory_coverage"] = diagnostics.get(
-                    "swarm_memory_coverage", 0.0
-                )
-                row["swarm_memory_peak"] = diagnostics.get("swarm_memory_peak", 0.0)
-                row["learned_memory_weight"] = diagnostics.get(
-                    "learned_memory_weight", 0.0
-                )
-                row["learned_frontier_weight"] = diagnostics.get(
-                    "learned_frontier_weight", 0.0
-                )
-                row["learned_propagation_weight"] = diagnostics.get(
-                    "learned_propagation_weight", 0.0
+                monitor = getattr(policy, "monitor", None)
+                row.update(
+                    {
+                        "checkpoint": diagnostics.get("checkpoint"),
+                        "ppo_residual_weight_norm": diagnostics.get("ppo_residual_weight_norm", 0.0),
+                        "critic_weight_norm": diagnostics.get("critic_weight_norm", 0.0),
+                        "behavior_weight_norm": diagnostics.get("behavior_weight_norm", 0.0),
+                        "behavior_state_weight_norm": diagnostics.get("behavior_state_weight_norm", 0.0),
+                        "safety_mask_rejections": diagnostics.get("safety_mask_rejections", 0),
+                        "forced_fallbacks": diagnostics.get("forced_fallbacks", 0),
+                        "return_guard_interventions": 0 if monitor is None else int(getattr(monitor, "return_guard_interventions", 0)),
+                        "safe_returns": int(env.safe_return_count),
+                        "swarm_memory_coverage": diagnostics.get("swarm_memory_coverage", 0.0),
+                        "swarm_memory_peak": diagnostics.get("swarm_memory_peak", 0.0),
+                        "learned_memory_weight": diagnostics.get("learned_memory_weight", 0.0),
+                        "learned_frontier_weight": diagnostics.get("learned_frontier_weight", 0.0),
+                        "learned_propagation_weight": diagnostics.get("learned_propagation_weight", 0.0),
+                    }
                 )
                 records.append(row)
                 print(
                     f"[{args.split}] {city_info['name']} episode={episode + 1}/{args.episodes} "
-                    f"zone={zone} strategy={strategy} score={row['operational_score']:.3f}",
-                    flush=True,
+                    f"zone={zone} strategy={strategy} score={row['operational_score']:.3f}", flush=True,
                 )
 
     output = Path(args.output_root)
@@ -203,33 +196,24 @@ def main() -> None:
     tables.mkdir(parents=True, exist_ok=True)
     frame = pd.DataFrame(records)
     city_summary, overall = rank_algorithms(frame)
-    score_ci = (
-        frame.groupby("strategy")["operational_score"]
-        .apply(_ci95)
-        .rename("operational_score_ci95")
-    )
-    overall = (
-        overall.merge(score_ci, left_on="strategy", right_index=True, how="left")
-        .sort_values("operational_score", ascending=False)
-        .reset_index(drop=True)
-    )
+    score_ci = frame.groupby("strategy")["operational_score"].apply(_ci95).rename("operational_score_ci95")
+    overall = overall.merge(score_ci, left_on="strategy", right_index=True, how="left").sort_values("operational_score", ascending=False).reset_index(drop=True)
     overall["rank"] = np.arange(1, len(overall) + 1)
     frame.to_csv(tables / "episode_results.csv", index=False)
     city_summary.to_csv(tables / "city_ranking.csv", index=False)
     overall.to_csv(tables / "overall_ranking.csv", index=False)
     manifest = {
         "generated_utc": datetime.now(timezone.utc).isoformat(),
-        "arguments": vars(args),
-        "protocol_integrity": integrity,
-        "cities": metadata_records,
-        "winner": overall.iloc[0].to_dict(),
-        "test_is_held_out": args.split == "test",
-        "data_attribution": OSM_ATTRIBUTION,
-        "training_version": "safe-action-masked PPO v2",
+        "arguments": vars(args), "protocol_integrity": integrity,
+        "cities": metadata_records, "winner": overall.iloc[0].to_dict(),
+        "test_is_held_out": args.split == "test", "data_attribution": OSM_ATTRIBUTION,
+        "training_version": "SafeSwarm PPO/GRPO v3",
+        "observation_contract": "observable-only primary policies; hidden target labels reserved for evaluation",
+        "grpo_ablations": [
+            "NoMemory", "NoPropagation", "NoLearnedBehavior"
+        ],
     }
-    (output / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, default=str), encoding="utf-8"
-    )
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
     _report(overall, frame, metadata_records, integrity, args, output / "report.html")
 
 

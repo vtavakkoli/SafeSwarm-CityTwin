@@ -14,9 +14,15 @@ def no_restricted_zone(candidate: Cell, env: CityTwinEnvironment) -> bool:
 
 
 def no_collision(agent_id: int, candidate: Cell, env: CityTwinEnvironment, planned_positions: Dict[int, Cell]) -> bool:
-    occupied_positions = {pos for aid, pos in planned_positions.items() if aid != agent_id}
+    occupied_positions = {
+        pos
+        for aid, pos in planned_positions.items()
+        if aid != agent_id and not env.agents.get(aid, env.agents[agent_id]).done
+    }
     occupied_positions.update(
-        state.position for aid, state in env.agents.items() if aid != agent_id
+        state.position
+        for aid, state in env.agents.items()
+        if aid != agent_id and not state.done
     )
     return candidate not in occupied_positions
 
@@ -27,8 +33,13 @@ def battery_reserve_for_return(
     env: CityTwinEnvironment,
     reserve_margin: float = 5.0,
 ) -> bool:
+    """Require enough energy to reach a base, but never reject arrival at base."""
+
+    if candidate in env.base_stations:
+        return agent.battery_level > 0.0
     dist = env.nearest_base_distance(candidate)
-    required = dist * 1.5 + reserve_margin
+    move_cost = float(getattr(env, "move_energy_cost", 1.5))
+    required = dist * move_cost + reserve_margin
     return agent.battery_level >= required
 
 

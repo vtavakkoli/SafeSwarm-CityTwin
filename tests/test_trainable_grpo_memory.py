@@ -4,6 +4,7 @@ import json
 
 import numpy as np
 
+from src.agents.grpo_v3 import BEHAVIOR_FEATURE_NAMES
 from src.agents.safe_ppo_core import VALUE_FEATURE_NAMES
 from src.agents.trainable_policies import TrainableGRPOMemoryPolicy
 from src.environment.city_twin import CityTwinEnvironment
@@ -63,8 +64,6 @@ def test_safe_mask_makes_logged_action_equal_executed_action():
     for decision in decisions:
         assert actions[decision["agent_id"]] == decision["selected_action"]
 
-    # Independently replay the returned joint action through the same sequential
-    # safety contract. Every action selected by PPO must already be executable.
     monitor = RuntimeSafetyMonitor()
     planned = {}
     for agent_id in sorted(env.agents):
@@ -75,7 +74,7 @@ def test_safe_mask_makes_logged_action_equal_executed_action():
         planned[agent_id] = candidate
 
 
-def test_grpo_memory_propagates_and_checkpoint_roundtrips(tmp_path):
+def test_grpo_memory_and_state_behavior_checkpoint_roundtrip(tmp_path):
     env = _env()
     policy = TrainableGRPOMemoryPolicy(seed=7, propagation_steps=2)
     for _ in range(3):
@@ -89,23 +88,31 @@ def test_grpo_memory_propagates_and_checkpoint_roundtrips(tmp_path):
     policy.residual_weights[:] = np.linspace(-0.2, 0.2, len(policy.residual_weights))
     policy.critic_weights[:] = np.linspace(-0.1, 0.1, len(policy.critic_weights))
     policy.behavior_bias[:] = np.linspace(-0.05, 0.05, len(policy.behavior_bias))
+    policy.behavior_weights[:] = np.linspace(
+        -0.03, 0.03, policy.behavior_weights.size
+    ).reshape(policy.behavior_weights.shape)
     checkpoint = tmp_path / "grpo.json"
     policy.save_checkpoint(checkpoint, {"unit_test": True})
     payload = json.loads(checkpoint.read_text(encoding="utf-8"))
-    assert payload["format"] == "safeswarm-grpo-memory-ppo-v2"
+    assert payload["format"] == "safeswarm-grpo-memory-ppo-v3"
+    assert payload["behavior_feature_names"] == list(BEHAVIOR_FEATURE_NAMES)
 
     restored = TrainableGRPOMemoryPolicy(seed=9, model_path=checkpoint)
     assert np.allclose(restored.residual_weights, policy.residual_weights)
     assert np.allclose(restored.critic_weights, policy.critic_weights)
     assert np.allclose(restored.behavior_bias, policy.behavior_bias)
+    assert np.allclose(restored.behavior_weights, policy.behavior_weights)
     assert restored.propagation_steps == 2
 
 
-def test_ppo_update_changes_action_and_grpo_behavior_weights():
+def test_ppo_update_changes_action_and_state_conditioned_behavior_weights():
     policy = TrainableGRPOMemoryPolicy(seed=3)
     features = np.zeros((2, len(policy.residual_weights)), dtype=float)
     features[0, 0] = 1.0
     features[1, 1] = 1.0
+    behavior_features = np.zeros(len(BEHAVIOR_FEATURE_NAMES), dtype=float)
+    behavior_features[0] = 1.0
+    behavior_features[1] = 0.75
     base = {
         "features": features,
         "base_scores": np.asarray([0.0, 0.0]),
@@ -113,20 +120,41 @@ def test_ppo_update_changes_action_and_grpo_behavior_weights():
         "value_features": np.zeros(len(VALUE_FEATURE_NAMES), dtype=float),
         "old_value": 0.0,
         "behavior_base_scores": np.zeros(policy.group_size, dtype=float),
+        "behavior_features": behavior_features,
         "behavior_old_probability": 1.0 / policy.group_size,
     }
     positive = dict(base, action_index=0, behavior_index=0)
     negative = dict(base, action_index=1, behavior_index=1)
     before_actor = policy.residual_weights.copy()
-    before_behavior = policy.behavior_bias.copy()
+    before_behavior = policy.behavior_weights.copy()
     policy.ppo_update(
         [(positive, 1.0, 1.0), (negative, -1.0, -1.0)],
-        learning_rate=0.1,
-        critic_learning_rate=0.05,
+        learning_rate=0.05,
+        critic_learning_rate=0.02,
+        entropy_coef=0.01,
         epochs=1,
     )
     assert not np.allclose(before_actor, policy.residual_weights)
-    assert not np.allclose(before_behavior, policy.behavior_bias)
+    assert not np.allclose(before_behavior, policy.behavior_weights)
+
+
+def test_imitation_update_moves_behavior_and_action_parameters():
+    env = _env(agents=2)
+    policy = TrainableGRPOMemoryPolicy(seed=4)
+    policy._update_swarm_memory(env)
+    positions = env.get_positions()
+    aid = 0
+    current = env.agents[aid].position
+    candidates = env.get_neighbors(current)
+    target = candidates[-1]
+    example = policy.imitation_example(env, aid, positions, candidates, target)
+    assert example is not None
+    before_actor = policy.residual_weights.copy()
+    before_behavior = policy.behavior_weights.copy()
+    stats = policy.imitation_update([example], learning_rate=0.05, epochs=2)
+    assert stats["imitation_examples"] == 1.0
+    assert not np.allclose(before_actor, policy.residual_weights)
+    assert not np.allclose(before_behavior, policy.behavior_weights)
 
 
 def test_gae_uses_value_baseline():
