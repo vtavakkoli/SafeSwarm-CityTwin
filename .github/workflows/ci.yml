@@ -14,7 +14,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,27 +29,47 @@ jobs:
         run: pytest -q
       - name: Offline integration benchmark
         run: python experiments/run_city_benchmark.py --offline --quick --output-root results/ci-benchmark
-      - name: Offline v3 train-test smoke pipeline
+      - name: Offline v4 train-test smoke pipeline
         run: |
           python experiments/run_train_test_pipeline.py --offline --quick
           test -f results/train/training_summary.csv
           test -f results/train/validation_history.csv
+          test -f results/train/validation_improvements.json
           test -f results/train/teacher_bootstrap.json
+          test -f results/train/sparx_tuning_history.csv
+          test -f results/train/sparx_pattern_summary.csv
+          test -f results/train/sparx_manifest.json
+          test -f results/train/checkpoints/sparx_safe.json
+          test -f results/train/checkpoints/sparx_x_safe.json
+          test -f results/train/checkpoints/sparx_plus_safe.json
+          test -f results/train/checkpoints/sparx_star_safe.json
           test -f results/test/tables/overall_ranking.csv
           test -f results/report.html
           python - <<'PY'
           import json
           from pathlib import Path
+          import pandas as pd
 
           train = json.loads(Path("results/train/manifest.json").read_text())
+          sparx = json.loads(Path("results/train/sparx_manifest.json").read_text())
           test = json.loads(Path("results/test/manifest.json").read_text())
+          ranking = pd.read_csv("results/test/tables/overall_ranking.csv")
+
+          assert train["training_version"] == "SafeSwarm PPO/GRPO v4"
           assert "per-agent difference reward" in train["credit_assignment"]
-          assert train["teacher_bootstrap"].startswith("GRPO only")
-          assert test["training_version"] == "SafeSwarm PPO/GRPO v3"
+          assert "robust score" in train["checkpoint_selection"]
+          assert len(train["validation_domains"]["cities"]) >= 1
+          assert sparx["algorithm"].startswith("SPARX:")
+          assert sparx["selected_pattern"] in {"x", "plus", "star"}
+          assert "test never consulted" in sparx["selection_rule"]
+          assert test["training_version"] == "SafeSwarm PPO/GRPO/SPARX v4"
           assert "observable-only" in test["observation_contract"]
           assert set(test["grpo_ablations"]) == {
               "NoMemory", "NoPropagation", "NoLearnedBehavior"
           }
+          assert test["sparx_selected_pattern"] in {"x", "plus", "star"}
+          names = set(ranking["strategy"])
+          assert {"SPARX-Safe", "SPARX-X-Safe", "SPARX-Plus-Safe", "SPARX-Star-Safe"} <= names
           PY
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
