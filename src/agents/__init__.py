@@ -15,6 +15,7 @@ from src.agents.marl_baselines import (
     MATPolicy,
     QMIXPolicy,
 )
+from src.agents.sparx_pattern import SPARXPolicy
 from src.agents.registry import strategy_factories
 
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "MADDPGPolicy",
     "HAPPOPolicy",
     "MATPolicy",
+    "SPARXPolicy",
     "strategy_factories",
 ]
