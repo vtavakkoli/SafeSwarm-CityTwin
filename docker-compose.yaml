@@ -37,6 +37,27 @@ services:
       - ${MAX_STEPS:-160}
       - --require-real-data
 
+  train-sparx:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/train_sparx_patterns.py
+      - --agents
+      - ${AGENTS:-8}
+      - --grid-size
+      - ${GRID_SIZE:-40}
+      - --rounds
+      - ${SPARX_ROUNDS:-8}
+      - --train-scenarios-per-candidate
+      - ${SPARX_TRAIN_SCENARIOS:-4}
+      - --validation-episodes
+      - ${SPARX_VALIDATION_EPISODES:-8}
+      - --validation-repeats
+      - ${SPARX_VALIDATION_REPEATS:-2}
+      - --max-steps
+      - ${MAX_STEPS:-160}
+      - --require-real-data
+
   test:
     <<: *benchmark-common
     command:
