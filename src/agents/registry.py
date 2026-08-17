@@ -24,6 +24,7 @@ from src.agents.observable_marl import (
 from src.agents.random_agent import RandomAgentPolicy
 from src.agents.safe_swarm_agent import SafeSwarmAgentPolicy
 from src.agents.safety_filtered_agent import SafetyFilteredAgentPolicy
+from src.agents.sparx_pattern import sparx_pattern_factories
 
 
 def strategy_factories(seed: int = 42) -> Dict[str, Callable[[], object]]:
@@ -31,9 +32,11 @@ def strategy_factories(seed: int = 42) -> Dict[str, Callable[[], object]]:
 
     Primary benchmark strategies obey the same partial-observability contract;
     hidden mission coordinates/priority labels are reserved for evaluation.
+    SPARX X/Plus/Star are included here as *untuned* mechanism baselines; the
+    train/test pipeline replaces them with validation-selected checkpoints.
     """
 
-    return {
+    factories: Dict[str, Callable[[], object]] = {
         "RandomAgent": lambda: RandomAgentPolicy(seed=seed),
         "GreedyAgent": GreedyAgentPolicy,
         "SafetyFilteredGreedy": SafetyFilteredAgentPolicy,
@@ -50,3 +53,5 @@ def strategy_factories(seed: int = 42) -> Dict[str, Callable[[], object]]:
         "HAPPO-Safe": lambda: ObservableHAPPOPolicy(seed=seed),
         "MAT-Safe": lambda: ObservableMATPolicy(seed=seed),
     }
+    factories.update(sparx_pattern_factories(seed=seed))
+    return factories
