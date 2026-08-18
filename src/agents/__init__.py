@@ -6,6 +6,11 @@ from src.agents.bio_swarm_agents import (
     PSOSwarmPolicy,
     UncertaintyAwareBeeAntSwarmPolicy,
 )
+from src.agents.ears_v6 import (
+    EARSNegativePheromonePolicy,
+    EARSPolicy,
+    HMAPPOEARSPolicy,
+)
 from src.agents.marl_baselines import (
     GRPOPolicy,
     HAPPOPolicy,
@@ -33,5 +38,8 @@ __all__ = [
     "MATPolicy",
     "PRISMPolicy",
     "PRISMAntPolicy",
+    "EARSPolicy",
+    "EARSNegativePheromonePolicy",
+    "HMAPPOEARSPolicy",
     "strategy_factories",
 ]
