@@ -60,6 +60,7 @@ jobs:
           swap = json.loads(Path("results/swap-test/manifest.json").read_text())
           ranking = pd.read_csv("results/test/tables/overall_ranking.csv")
           upgrade_summary = pd.read_csv("results/train/coordination_upgrade_summary.csv")
+          swap_datasets = pd.read_csv("results/swap-test/tables/dataset_manifest.csv")
 
           assert prism["algorithm"].startswith("PRISM:")
           assert prism["selected_pattern"] in {"x", "plus", "star"}
@@ -71,7 +72,9 @@ jobs:
           assert test["deterministic_learned_evaluation"] is True
           assert test["obsolete_sparx_names_present"] is False
           assert swap["used_for_model_selection"] is False
+          assert swap["dataset_changed_pass"] is True
           assert swap["unique_signatures_pass"] is True
+          assert (swap_datasets["target_count"] < swap_datasets["original_target_count"]).all()
           names = set(ranking["strategy"])
           assert {"PRISM-Safe", "PRISM-Ant-Safe", "PRISM-X-Safe", "PRISM-Plus-Safe", "PRISM-Star-Safe"} <= names
           assert not any(name.startswith("SPARX") for name in names)
