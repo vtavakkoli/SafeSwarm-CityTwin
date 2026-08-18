@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from experiments.test_real_city_policies_v5 import main as _v5_main
-from experiments.test_real_city_policies_v5 import parse_args
+from test_real_city_policies_v5 import main as _v5_main
+from test_real_city_policies_v5 import parse_args
 
 
 def main() -> None:
