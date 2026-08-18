@@ -10,7 +10,7 @@ from src.agents.ears_v6 import (
     EARSPolicy,
     HMAPPOEARSPolicy,
 )
-from src.environment.city_twin import CityTwinEnvironment
+from src.environment.city_twin import MOVE_ACTIONS, CityTwinEnvironment
 from src.training.geography import apply_start_zone
 
 
@@ -105,7 +105,7 @@ def test_h_mappo_ears_without_checkpoint_falls_back_to_safe_hierarchy():
     policy = HMAPPOEARSPolicy(seed=4)
     actions = policy.act(env)
     assert set(actions) == set(env.agents)
-    assert all(action in env.ACTIONS for action in actions.values())
+    assert all(action in MOVE_ACTIONS for action in actions.values())
 
 
 def test_ears_default_is_ant_dominant_before_events():
