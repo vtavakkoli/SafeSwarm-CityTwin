@@ -74,6 +74,27 @@ services:
       - ${MAX_STEPS:-160}
       - --require-real-data
 
+  train-ears:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/train_ears_v6.py
+      - --agents
+      - ${AGENTS:-8}
+      - --grid-size
+      - ${GRID_SIZE:-40}
+      - --train-episodes
+      - ${EARS_TRAIN_EPISODES:-6}
+      - --validation-episodes
+      - ${EARS_VALIDATION_EPISODES:-8}
+      - --validation-repeats
+      - ${EARS_VALIDATION_REPEATS:-2}
+      - --max-steps
+      - ${MAX_STEPS:-160}
+      - --model-dir
+      - results/train/checkpoints
+      - --require-real-data
+
   test:
     <<: *benchmark-common
     command: ["python", "experiments/test_real_city_policies.py", "--agents", "${AGENTS:-8}", "--grid-size", "${GRID_SIZE:-40}", "--episodes", "${TEST_EPISODES:-20}", "--max-steps", "${MAX_STEPS:-160}", "--model-dir", "results/train/checkpoints", "--require-real-data"]
