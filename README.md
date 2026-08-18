@@ -1,65 +1,65 @@
 # SafeSwarm-CityTwin
 
-A reproducible research benchmark for **safety-constrained multi-agent urban search** on cached real OpenStreetMap city snapshots. SafeSwarm separates training, robust validation, primary held-out testing, and post-selection stress testing; all primary policies obey an observable-only action contract.
+A reproducible research benchmark for **safety-constrained multi-agent urban search** on cached real OpenStreetMap city snapshots. SafeSwarm separates training, robust validation, primary held-out testing, and post-selection SWAP stress testing. Primary policies obey an observable-only action contract.
 
-## v5: PRISM, PRISM-Ant, SWAP, and stronger learned baselines
+## v6: EARS — improve Ant without destroying what makes Ant strong
 
-SafeSwarm v5 is driven by the real v4 finding that `AntSwarmSafe` generalized substantially better than the learned PPO-family controllers. The learned policies travelled far but revisited a large fraction of already-covered cells; AntSwarm's novelty, pheromone and anti-clustering inductive bias produced much stronger held-out target discovery.
+The v5 real-city run exposed a useful result: `PRISM-Ant-Safe` could approach AntSwarm's discovery and even exceed it on some SWAP views, yet `AntSwarmSafe` still won overall because it used **less distance, less energy, and less redundant coverage**.
 
-v5 addresses that failure without changing the test score or forcing a preferred winner.
+v6 therefore changes the research question.
 
-### 1. SPARX is renamed PRISM
+Instead of continuously blending more global planning into Ant, v6 keeps **AntSwarmSafe unchanged as the reference** and introduces global intelligence only when observable search quality degrades.
 
-The v4 search controller is now **PRISM — Probability-guided Region-Integrated Search with Memory**. The rename avoids confusion with unrelated uses of the SPARX acronym.
+### EARS-Safe
 
-PRISM retains the scientifically relevant mechanism:
+**EARS — Event-driven Ant Reallocation Search** uses the original Ant-style local rule by default. Global relocation is triggered only when an agent shows evidence of:
 
-- observable-only signed shared swarm memory;
-- normalized search-utility probability map;
-- uncertainty/frontier/pheromone/novelty evidence;
-- repulsion from revisited and resolved cells;
-- spatial region segmentation;
-- distance/battery-aware multi-agent region assignment;
-- X, Plus, and Star local search geometries;
-- validation-only weight and pattern selection.
+- trajectory stagnation;
+- excessive local revisits;
+- local swarm congestion.
 
-The legacy `sparx_pattern.py` module remains only as a compatibility alias for reproducing v4 checkpoints. **No v5 benchmark strategy is named SPARX.**
+When triggered, EARS assigns a new observable frontier/evidence goal using a utility that explicitly penalizes:
 
-### 2. PRISM-Ant-Safe
+- path distance;
+- predicted movement energy;
+- revisited cells;
+- agent congestion;
+- goals that would compromise safe battery return.
 
-**PRISM-Ant-Safe** combines complementary strengths instead of replacing one heuristic with another:
+The goal is not “more exploration.” It is **higher marginal target discovery per unit movement**.
 
-- **PRISM** decides *where the team should search*: probability memory, map segmentation, diverse region assignments, and structured pattern goals;
-- **AntSwarm** influences *how an agent searches locally*: observed priority, uncertainty×novelty, pheromone following, strong revisit suppression, and anti-clustering.
+### EARS-NP-Safe
 
-The fusion strength is selected on the validation split only. The held-out test and SWAP cannot tune it.
+`EARS-NP-Safe` adds a repulsive **negative-pheromone exclusion field**. Repeatedly visited and congested cells deposit negative pheromone; the field decays and diffuses into a small spatial halo. This discourages agents from tracing the same corridors or nearly parallel paths.
 
-### 3. SWAP: Seeded World Alternate Protocol
+Positive observable evidence remains in the existing environment pheromone/frontier signals. The negative field is a separate anti-overlap mechanism.
 
-Changing only the episode RNG seed does **not** create a different real OSM dataset because the cached physical city layer is keyed by place/grid/radius. v5 therefore adds **SWAP — Seeded World Alternate Protocol**.
+### H-MAPPO-EARS-Safe
 
-For each SWAP dataset seed, SafeSwarm keeps the same real city geometry—obstacles, restricted cells and bases—but deterministically builds a different priority-stratified hidden mission subset. Each view records a stable signature and target count.
+`H-MAPPO-EARS-Safe` is a **MAPPO-assisted hierarchical option controller**, not a claim of a new MAPPO implementation. It treats the trained MAPPO checkpoint as one option inside an explicit hierarchy:
 
-SWAP is deliberately **post-selection only**. It answers a stronger question: does the frozen ranking survive different hidden mission layouts in the same unseen cities?
+1. safe return to base;
+2. EARS global relocation;
+3. negative-pheromone escape;
+4. Ant evidence exploitation;
+5. MAPPO local action when the observable state is suitable;
+6. Ant local exploration fallback.
 
-### 4. Why IPPO/MAPPO/HAPPO/GRPO were weak, and what v5 changes
+This avoids forcing MAPPO to relearn the low-level Ant heuristic that already generalizes well.
 
-The v4 implementation exposed several repository-level limitations beyond algorithm theory:
+## Existing v5 components retained
 
-1. loaded PPO checkpoints still sampled actions stochastically during evaluation;
-2. IPPO/MAPPO/HAPPO had no explicit global frontier/goal allocation, leaving the memory/frontier coordination feature slots effectively unused;
-3. only GRPO received teacher imitation;
-4. local PPO preferences could therefore become long high-redundancy walks even after robust validation selection.
+### PRISM
 
-v5 adds:
+**PRISM — Probability-guided Region-Integrated Search with Memory** remains the explicit global-search comparison. It uses observable signed memory, normalized search utility, region allocation, and X / Plus / Star local search geometries. Pattern and parameter selection use validation only.
 
-- **deterministic checkpoint inference** for learned-policy validation/test;
-- an observable **shared frontier/evidence goal coordinator** for IPPO/MAPPO/HAPPO and an auxiliary coordination signal for GRPO;
-- distinct multi-agent global goals to reduce overlap;
-- generic safe-action distillation from `AntSwarmSafe` and `UA-HBAS-Safe` for **all four trainable policies**;
-- a separate validation-gated upgrade stage: a distilled checkpoint replaces the base checkpoint only if the multi-domain robust validation score improves.
+### PRISM-Ant
 
-This is still an auditable NumPy research implementation, not a claim of full deep-neural reproduction of the original IPPO/MAPPO/HAPPO papers.
+`PRISM-Ant-Safe` continuously fuses PRISM global allocation with Ant local search. v6 retains it because it is the direct predecessor to the event-driven EARS hypothesis.
+
+### SWAP
+
+**SWAP — Seeded World Alternate Protocol** keeps the same unseen real-city OSM geometry but generates deterministic seed-indexed hidden mission subsets. SWAP is post-selection only and cannot tune any model, PRISM pattern, EARS threshold, or pheromone parameter.
 
 ## Experimental protocol
 
@@ -70,9 +70,9 @@ This is still an auditable NumPy research implementation, not a claim of full de
 | Primary test | San Francisco, Paris | north-east, south-west | **no** |
 | SWAP test | test cities with seed-indexed alternate mission views | test zones | **no** |
 
-Ground-truth mission coordinates and priority labels are evaluator data. Policies may use sensed observations, uncertainty/frontiers, pheromones, visits, known constraints, battery, communication and shared observable swarm state.
+Ground-truth mission coordinates and hidden priority labels are evaluator data. Policies may use sensed observations, uncertainty/frontiers, pheromones, visits, known constraints, battery, communication, and shared observable swarm state.
 
-## v5 pipeline
+## v6 pipeline
 
 ```text
 prepare real OSM snapshots
@@ -81,13 +81,13 @@ base PPO/GRPO training + robust validation checkpoints
   ↓
 v5 coordination + teacher-distillation upgrade
   ↓
-PRISM X / Plus / Star tuning + validation pattern selection
+PRISM X / Plus / Star + PRISM-Ant validation selection
   ↓
-PRISM-Ant validation fusion selection
+EARS / EARS-NP / H-MAPPO-EARS train-shortlist + validation selection
   ↓
 frozen primary held-out test
   ↓
-SWAP seed-shift stress test
+SWAP multi-seed alternate-target stress test
   ↓
 combined report
 ```
@@ -105,32 +105,31 @@ docker compose up --build prepare-data
 docker compose up --build train
 docker compose up --build upgrade-ppo
 docker compose up --build train-prism
+docker compose up --build train-ears
 docker compose up --build test
 docker compose up --build test-swap
 ```
 
-Useful outputs:
+Useful v6 outputs:
 
 ```text
-results/train/training_summary.csv
-results/train/coordination_upgrade_summary.csv
-results/train/prism_pattern_summary.csv
-results/train/prism_ant_summary.csv
-results/train/prism_manifest.json
-results/train/checkpoints/prism_safe.json
-results/train/checkpoints/prism_ant_safe.json
+results/train/ears_candidate_history.csv
+results/train/ears_summary.csv
+results/train/ears_manifest.json
+results/train/checkpoints/ears_safe.json
+results/train/checkpoints/ears_np_safe.json
+results/train/checkpoints/h_mappo_ears_safe.json
 results/test/tables/overall_ranking.csv
 results/swap-test/tables/seed_ranking.csv
 results/swap-test/tables/overall_ranking.csv
-results/swap-test/manifest.json
 results/report.html
 ```
 
 ## Scientific interpretation
 
-The repository never assumes PRISM-Ant, PRISM, GRPO, or a PPO baseline must beat AntSwarm. The correct result is whichever frozen method wins the primary held-out and SWAP evaluations. If AntSwarm remains strongest after v5, that is evidence for the value of its search inductive bias rather than a reason to alter the benchmark.
+`AntSwarmSafe` is intentionally left unchanged. EARS is successful only if the **frozen** event-driven variants improve the held-out/SWAP result without using test feedback—especially by lowering redundancy, energy, and distance while preserving Ant-level target discovery.
 
-For publication results, run multiple independent top-level training seeds and report 95% confidence intervals, per-city/per-SWAP-seed rankings, discovery, coverage, redundancy, energy, safety, and ablations—not only the aggregate operational score.
+The repository never forces EARS, PRISM, MAPPO, or any other method to win. Publication claims should report multiple independent top-level seeds, 95% confidence intervals, per-city/per-SWAP-seed rankings, target discovery, coverage, redundancy, energy, distance, safety, and mechanism ablations.
 
 ## License and data
 
