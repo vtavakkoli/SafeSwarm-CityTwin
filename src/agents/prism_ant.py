@@ -1,13 +1,9 @@
 """PRISM-Ant: global PRISM allocation fused with AntSwarm local search.
 
-The v4 real-city result exposed complementary strengths:
-
-* AntSwarmSafe had excellent target discovery and very low redundant coverage;
-* PRISM covered more of the map and provided explicit global region allocation.
-
-PRISM-Ant preserves PRISM's observable-only probability memory and disjoint
-region/pattern goals, but chooses each safe local move with an adaptive fusion
-of PRISM progress and Ant-style novelty/pheromone/anti-revisit scoring.
+PRISM-Ant uses PRISM for broad, non-overlapping exploration and increasingly
+activates AntSwarm's local novelty/pheromone/revisit bias as the map becomes
+observed or an agent reaches sensed evidence. This avoids letting the local Ant
+heuristic override PRISM's global allocation too early in an episode.
 """
 
 from __future__ import annotations
@@ -63,11 +59,24 @@ class PRISMAntPolicy(PRISMPolicy):
         self.name = kwargs.get("strategy_name") or "PRISM-Ant-Safe"
 
     def _adaptive_ant_blend(self, env: CityTwinEnvironment, cell: Cell) -> float:
-        """Use more Ant behavior around observed evidence; more PRISM in unknown space."""
-        base = float(self.hybrid_config.ant_blend)
-        evidence = observable_priority(env, cell)
+        """Phase-gate Ant behavior: PRISM early, Ant near evidence/later search."""
+
+        base = float(np.clip(self.hybrid_config.ant_blend, 0.0, 1.0))
+        evidence = float(np.clip(observable_priority(env, cell), 0.0, 1.0))
         unexplored = float(np.mean(env.uncertainty_map >= 0.99))
-        return float(np.clip(base + 0.18 * evidence - 0.12 * unexplored, 0.25, 0.88))
+        explored = float(np.clip(1.0 - unexplored, 0.0, 1.0))
+        local_confidence = float(np.clip(1.0 - env.uncertainty_map[cell], 0.0, 1.0))
+
+        # At episode start the blend is deliberately small so PRISM can spread
+        # agents into different regions. Ant influence rises as the shared map
+        # matures and rises sharply around sensed priority evidence.
+        blend = (
+            0.10
+            + 0.72 * base * explored
+            + 0.26 * evidence
+            + 0.08 * local_confidence
+        )
+        return float(np.clip(blend, 0.10, 0.88))
 
     def _choose_safe_action(
         self,
@@ -98,7 +107,6 @@ class PRISMAntPolicy(PRISMPolicy):
             prism_utility = float(
                 np.nan_to_num(self.search_utility_map[cell], nan=-10.0, neginf=-10.0)
             )
-
             visits = float(env.visit_counts[cell])
             novelty = 1.0 / (1.0 + visits)
             priority = observable_priority(env, cell)
