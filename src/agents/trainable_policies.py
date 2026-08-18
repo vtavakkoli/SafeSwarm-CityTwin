@@ -1,4 +1,4 @@
-"""Public registry for trainable SafeSwarm v5 policies."""
+"""Public registry for trainable and validation-selected SafeSwarm policies."""
 
 from __future__ import annotations
 
@@ -7,6 +7,11 @@ from typing import Any
 
 import numpy as np
 
+from src.agents.ears_v6 import (
+    EARSNegativePheromonePolicy,
+    EARSPolicy,
+    HMAPPOEARSPolicy,
+)
 from src.agents.grpo_v3 import TrainableGRPOMemoryPolicy
 from src.agents.ppo_v3 import (
     TrainableHAPPOPolicy,
@@ -72,12 +77,7 @@ def _grpo_ablation(seed: int, path: Path, mode: str) -> TrainableGRPOMemoryPolic
 
 
 def evaluation_factories(seed: int, model_dir: str | Path | None = None) -> dict[str, Any]:
-    """Return fixed + validation-selected trained factories.
-
-    Loaded PPO/GRPO checkpoints evaluate deterministically by default in v5.
-    Canonical PRISM filenames are preferred; v4 SPARX files can still be loaded
-    under PRISM strategy names to reproduce/migrate older checkpoint folders.
-    """
+    """Return fixed + validation-selected factories for frozen evaluation."""
 
     from src.agents.registry import strategy_factories
 
@@ -147,8 +147,32 @@ def evaluation_factories(seed: int, model_dir: str | Path | None = None) -> dict
                 )
             )
 
-    # Remove any obsolete v4 names that could have entered through a downstream
-    # custom registry. v5 reports PRISM only.
+        ears = root / "ears_safe.json"
+        if ears.exists():
+            factories["EARS-Safe"] = (
+                lambda path=ears: EARSPolicy(
+                    seed=seed, model_path=path, strategy_name="EARS-Safe"
+                )
+            )
+        ears_np = root / "ears_np_safe.json"
+        if ears_np.exists():
+            factories["EARS-NP-Safe"] = (
+                lambda path=ears_np: EARSNegativePheromonePolicy(
+                    seed=seed, model_path=path, strategy_name="EARS-NP-Safe"
+                )
+            )
+        h_ears = root / "h_mappo_ears_safe.json"
+        if h_ears.exists():
+            mappo = root / "mappo_safe.json"
+            factories["H-MAPPO-EARS-Safe"] = (
+                lambda path=h_ears, mappo=mappo: HMAPPOEARSPolicy(
+                    seed=seed,
+                    model_path=path,
+                    mappo_model_path=mappo,
+                    strategy_name="H-MAPPO-EARS-Safe",
+                )
+            )
+
     for name in list(factories):
         if name.startswith("SPARX"):
             factories.pop(name, None)
@@ -165,6 +189,9 @@ __all__ = [
     "TrainableHAPPOPolicy",
     "PRISMPolicy",
     "PRISMAntPolicy",
+    "EARSPolicy",
+    "EARSNegativePheromonePolicy",
+    "HMAPPOEARSPolicy",
     "TRAINABLE_POLICY_CLASSES",
     "checkpoint_path",
     "prism_checkpoint_path",
