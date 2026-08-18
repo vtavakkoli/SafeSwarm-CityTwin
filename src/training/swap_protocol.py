@@ -1,12 +1,12 @@
 """SWAP: Seeded World Alternate Protocol for anti-overfitting evaluation.
 
 Changing the environment RNG seed alone does *not* create a new real OSM test
-map because cached city layers are keyed by place/grid/radius.  SWAP therefore
+map because cached city layers are keyed by place/grid/radius. SWAP therefore
 creates deterministic seed-indexed mission views from one immutable physical
-OSM snapshot.  Obstacles, restricted geography and city provenance stay fixed;
+OSM snapshot. Obstacles, restricted geography and city provenance stay fixed;
 only the held-out monitoring-target subset changes.
 
-SWAP is evaluation-only.  Its seed-indexed target views must never be used to
+SWAP is evaluation-only. Its seed-indexed target views must never be used to
 select training weights, PRISM patterns, or hybrid parameters.
 """
 
@@ -27,9 +27,16 @@ def _effective_seed(metadata: Mapping[str, Any], dataset_seed: int) -> int:
     return int(digest[:16], 16) % (2**32 - 1)
 
 
-def _signature(cells: set[Cell], dataset_seed: int) -> str:
+def _signature(cells: set[Cell]) -> str:
+    """Hash the actual target set, not the requested seed.
+
+    This is deliberately seed-independent: two seeds that accidentally produce
+    the same target set must have the same signature so CI can detect that the
+    dataset did not really change.
+    """
+
     body = ";".join(f"{x},{y}" for x, y in sorted(cells))
-    return hashlib.sha256(f"{dataset_seed}|{body}".encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
 
 def seeded_mission_view(
@@ -37,7 +44,7 @@ def seeded_mission_view(
     dataset_seed: int,
     *,
     target_fraction: float = 0.72,
-    min_targets: int = 12,
+    min_targets: int = 6,
 ) -> dict[str, Any]:
     """Return a deterministic alternate target view of a cached city layer.
 
@@ -60,7 +67,6 @@ def seeded_mission_view(
     effective = _effective_seed(result.get("metadata", {}), int(dataset_seed))
     rng = np.random.default_rng(effective)
 
-    # Priority-stratified sampling preserves the target difficulty distribution.
     buckets: dict[float, list[Cell]] = {}
     for cell in candidates:
         bucket = round(float(priority.get(cell, 0.5)), 2)
@@ -93,7 +99,8 @@ def seeded_mission_view(
             "swap_target_fraction": fraction,
             "swap_original_target_count": int(len(original)),
             "swap_target_count": int(len(selected)),
-            "swap_signature": _signature(selected, int(dataset_seed)),
+            "swap_dataset_changed": bool(set(selected) != original),
+            "swap_signature": _signature(selected),
             "swap_selection": "priority-stratified deterministic target subset",
         }
     )
