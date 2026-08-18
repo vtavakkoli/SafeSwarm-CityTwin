@@ -1,4 +1,4 @@
-"""Run prepare, PPO-v4, SPARX tuning, held-out test and report."""
+"""Run SafeSwarm v5 prepare → learn → coordinate → PRISM → test → SWAP."""
 
 from __future__ import annotations
 
@@ -28,17 +28,23 @@ def main() -> None:
     if args.require_real_data:
         common.append("--require-real-data")
 
-    _run([sys.executable, "experiments/prepare_real_city_data.py", *common])
+    prepare = [sys.executable, "experiments/prepare_real_city_data.py", *common]
     train = [sys.executable, "experiments/train_real_city_policies.py", *common]
-    sparx = [sys.executable, "experiments/train_sparx_patterns.py", *common]
+    coordinate = [sys.executable, "experiments/upgrade_ppo_coordination_v5.py", *common]
+    prism = [sys.executable, "experiments/train_prism_patterns.py", *common]
     test = [sys.executable, "experiments/test_real_city_policies.py", *common]
+    swap = [sys.executable, "experiments/test_swap_protocol.py", *common]
+
     if args.quick:
-        train.append("--quick")
-        sparx.append("--quick")
-        test.append("--quick")
+        for command in (train, coordinate, prism, test, swap):
+            command.append("--quick")
+
+    _run(prepare)
     _run(train)
-    _run(sparx)
+    _run(coordinate)
+    _run(prism)
     _run(test)
+    _run(swap)
     _run([sys.executable, "experiments/build_train_test_report.py"])
 
 
