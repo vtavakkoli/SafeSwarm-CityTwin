@@ -1,4 +1,4 @@
-"""Public registry for trainable SafeSwarm v4 policies."""
+"""Public registry for trainable SafeSwarm v5 policies."""
 
 from __future__ import annotations
 
@@ -13,13 +13,14 @@ from src.agents.ppo_v3 import (
     TrainableIPPOPolicy,
     TrainableMAPPOPolicy,
 )
+from src.agents.prism_ant import PRISMAntPolicy
+from src.agents.prism_pattern import PRISMPolicy
 from src.agents.safe_ppo_core import (
     FEATURE_NAMES,
     VALUE_FEATURE_NAMES,
     PPOResidualMixin,
     feature_index,
 )
-from src.agents.sparx_pattern import SPARXPolicy
 
 TRAINABLE_POLICY_CLASSES = {
     "GRPO-Safe": TrainableGRPOMemoryPolicy,
@@ -34,9 +35,22 @@ def checkpoint_path(model_dir: str | Path, strategy: str) -> Path:
     return Path(model_dir) / f"{safe_name}.json"
 
 
+def prism_checkpoint_path(model_dir: str | Path, pattern: str | None = None) -> Path:
+    suffix = "" if pattern is None else f"_{pattern}"
+    return Path(model_dir) / f"prism{suffix}_safe.json"
+
+
 def sparx_checkpoint_path(model_dir: str | Path, pattern: str | None = None) -> Path:
+    """Deprecated v4 path helper retained only for checkpoint migration."""
     suffix = "" if pattern is None else f"_{pattern}"
     return Path(model_dir) / f"sparx{suffix}_safe.json"
+
+
+def _first_existing(*paths: Path) -> Path | None:
+    for path in paths:
+        if path.exists():
+            return path
+    return None
 
 
 def _grpo_ablation(seed: int, path: Path, mode: str) -> TrainableGRPOMemoryPolicy:
@@ -58,11 +72,11 @@ def _grpo_ablation(seed: int, path: Path, mode: str) -> TrainableGRPOMemoryPolic
 
 
 def evaluation_factories(seed: int, model_dir: str | Path | None = None) -> dict[str, Any]:
-    """Return fixed + trained factories for validation/held-out evaluation.
+    """Return fixed + validation-selected trained factories.
 
-    PPO checkpoints remain mandatory when ``model_dir`` is supplied. SPARX is
-    backward compatible: validation-selected SPARX checkpoints are loaded when
-    present, while older v3 checkpoint directories can still be evaluated.
+    Loaded PPO/GRPO checkpoints evaluate deterministically by default in v5.
+    Canonical PRISM filenames are preferred; v4 SPARX files can still be loaded
+    under PRISM strategy names to reproduce/migrate older checkpoint folders.
     """
 
     from src.agents.registry import strategy_factories
@@ -84,7 +98,9 @@ def evaluation_factories(seed: int, model_dir: str | Path | None = None) -> dict
 
     for strategy, cls in TRAINABLE_POLICY_CLASSES.items():
         path = paths[strategy]
-        factories[strategy] = lambda cls=cls, path=path: cls(seed=seed, model_path=path)
+        factories[strategy] = lambda cls=cls, path=path: cls(
+            seed=seed, model_path=path, deterministic_eval=True
+        )
 
     grpo_path = paths["GRPO-Safe"]
     if grpo_path is not None:
@@ -99,22 +115,43 @@ def evaluation_factories(seed: int, model_dir: str | Path | None = None) -> dict
         )
 
     if model_dir:
-        selected = sparx_checkpoint_path(model_dir)
-        if selected.exists():
-            factories["SPARX-Safe"] = (
-                lambda path=selected: SPARXPolicy(
-                    seed=seed, model_path=path, strategy_name="SPARX-Safe"
+        root = Path(model_dir)
+        selected = _first_existing(
+            prism_checkpoint_path(root), sparx_checkpoint_path(root)
+        )
+        if selected is not None:
+            factories["PRISM-Safe"] = (
+                lambda path=selected: PRISMPolicy(
+                    seed=seed, model_path=path, strategy_name="PRISM-Safe"
                 )
             )
+
         for pattern, label in (("x", "X"), ("plus", "Plus"), ("star", "Star")):
-            path = sparx_checkpoint_path(model_dir, pattern)
-            if path.exists():
-                strategy = f"SPARX-{label}-Safe"
+            path = _first_existing(
+                prism_checkpoint_path(root, pattern),
+                sparx_checkpoint_path(root, pattern),
+            )
+            if path is not None:
+                strategy = f"PRISM-{label}-Safe"
                 factories[strategy] = (
-                    lambda path=path, strategy=strategy: SPARXPolicy(
+                    lambda path=path, strategy=strategy: PRISMPolicy(
                         seed=seed, model_path=path, strategy_name=strategy
                     )
                 )
+
+        hybrid = root / "prism_ant_safe.json"
+        if hybrid.exists():
+            factories["PRISM-Ant-Safe"] = (
+                lambda path=hybrid: PRISMAntPolicy(
+                    seed=seed, model_path=path, strategy_name="PRISM-Ant-Safe"
+                )
+            )
+
+    # Remove any obsolete v4 names that could have entered through a downstream
+    # custom registry. v5 reports PRISM only.
+    for name in list(factories):
+        if name.startswith("SPARX"):
+            factories.pop(name, None)
     return factories
 
 
@@ -126,9 +163,11 @@ __all__ = [
     "TrainableIPPOPolicy",
     "TrainableMAPPOPolicy",
     "TrainableHAPPOPolicy",
-    "SPARXPolicy",
+    "PRISMPolicy",
+    "PRISMAntPolicy",
     "TRAINABLE_POLICY_CLASSES",
     "checkpoint_path",
+    "prism_checkpoint_path",
     "sparx_checkpoint_path",
     "evaluation_factories",
 ]
