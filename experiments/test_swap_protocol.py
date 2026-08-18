@@ -1,7 +1,7 @@
 """Evaluate frozen policies on SWAP seed-indexed alternate real-city target views.
 
 SWAP (Seeded World Alternate Protocol) changes the held-out mission set for each
-seed while preserving the cached OSM city geometry.  It is an anti-overfitting
+seed while preserving the cached OSM city geometry. It is an anti-overfitting
 stress test only: no SWAP metric may select a checkpoint, PRISM pattern, or
 PRISM-Ant fusion strength.
 """
@@ -93,11 +93,8 @@ def main() -> None:
 
     for city_index, city in enumerate(cities):
         base_layers = load_real_city_layers(
-            city["place"],
-            args.grid_size,
-            args.seed + city_index,
-            radius_m=int(city.get("radius_m", 1400)),
-            cache_dir=args.cache_dir,
+            city["place"], args.grid_size, args.seed + city_index,
+            radius_m=int(city.get("radius_m", 1400)), cache_dir=args.cache_dir,
             allow_network=not args.offline,
         )
         metadata = dict(base_layers.get("metadata", {}))
@@ -106,9 +103,7 @@ def main() -> None:
 
         for dataset_seed in dataset_seeds:
             swap_layers = seeded_mission_view(
-                base_layers,
-                dataset_seed,
-                target_fraction=args.target_fraction,
+                base_layers, dataset_seed, target_fraction=args.target_fraction
             )
             swap_meta = dict(swap_layers.get("metadata", {}))
             signature = str(swap_meta["swap_signature"])
@@ -120,6 +115,7 @@ def main() -> None:
                     "data_source": swap_meta.get("source"),
                     "swap_seed": int(dataset_seed),
                     "swap_signature": signature,
+                    "dataset_changed": bool(swap_meta["swap_dataset_changed"]),
                     "original_target_count": int(swap_meta["swap_original_target_count"]),
                     "target_count": int(swap_meta["swap_target_count"]),
                     "target_fraction": float(swap_meta["swap_target_fraction"]),
@@ -130,33 +126,19 @@ def main() -> None:
                 zone = zones[episode % len(zones)]
                 episode_seed = args.seed + episode + city_index * 10000 + dataset_seed * 100
                 layers = apply_start_zone(swap_layers, args.grid_size, zone)
-                for strategy, factory in evaluation_factories(
-                    episode_seed, args.model_dir
-                ).items():
+                for strategy, factory in evaluation_factories(episode_seed, args.model_dir).items():
                     env = CityTwinEnvironment(
-                        grid_size=args.grid_size,
-                        n_agents=args.agents,
-                        seed=episode_seed,
-                        place_name=city["place"],
-                        radius_m=int(city.get("radius_m", 1400)),
-                        layers=layers,
-                        max_steps=args.max_steps,
-                        allow_network=False,
+                        grid_size=args.grid_size, n_agents=args.agents, seed=episode_seed,
+                        place_name=city["place"], radius_m=int(city.get("radius_m", 1400)),
+                        layers=layers, max_steps=args.max_steps, allow_network=False,
                     )
                     policy = factory()
                     metrics = run_episode(env, policy)
                     row = metrics.to_dict(
-                        strategy=strategy,
-                        episode=episode,
-                        split="swap-test",
-                        city=city["name"],
-                        place=city["place"],
-                        start_zone=zone,
-                        data_source=env.data_source,
-                        agents=args.agents,
-                        grid_size=args.grid_size,
-                        steps=env.steps,
-                        seed=episode_seed,
+                        strategy=strategy, episode=episode, split="swap-test",
+                        city=city["name"], place=city["place"], start_zone=zone,
+                        data_source=env.data_source, agents=args.agents,
+                        grid_size=args.grid_size, steps=env.steps, seed=episode_seed,
                     )
                     row.update(
                         {
@@ -171,8 +153,7 @@ def main() -> None:
                     print(
                         f"[SWAP] city={city['name']} dataset-seed={dataset_seed} "
                         f"episode={episode + 1}/{args.episodes} strategy={strategy} "
-                        f"score={row['operational_score']:.3f}",
-                        flush=True,
+                        f"score={row['operational_score']:.3f}", flush=True,
                     )
 
     output = Path(args.output_root)
@@ -192,8 +173,7 @@ def main() -> None:
     for (swap_seed, strategy), group in frame.groupby(["swap_seed", "strategy"]):
         seed_rows.append(
             {
-                "swap_seed": int(swap_seed),
-                "strategy": strategy,
+                "swap_seed": int(swap_seed), "strategy": strategy,
                 "operational_score": float(group["operational_score"].mean()),
                 "operational_score_ci95": _ci95(group["operational_score"]),
                 "weighted_target_discovery": float(group["weighted_target_discovery"].mean()),
@@ -209,9 +189,11 @@ def main() -> None:
     frame.to_csv(tables / "episode_results.csv", index=False)
     seed_ranking.to_csv(tables / "seed_ranking.csv", index=False)
     overall.to_csv(tables / "overall_ranking.csv", index=False)
-    pd.DataFrame(dataset_manifest).to_csv(tables / "dataset_manifest.csv", index=False)
+    dataset_frame = pd.DataFrame(dataset_manifest)
+    dataset_frame.to_csv(tables / "dataset_manifest.csv", index=False)
 
     expected_views = len(cities) * len(dataset_seeds)
+    dataset_changed_pass = bool(dataset_frame["dataset_changed"].all())
     manifest = {
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "protocol": "SWAP: Seeded World Alternate Protocol",
@@ -220,6 +202,7 @@ def main() -> None:
         "data_attribution": OSM_ATTRIBUTION,
         "physical_city_geometry": "cached OSM geometry fixed per city",
         "dataset_change": "priority-stratified hidden mission target subset changes by SWAP seed",
+        "dataset_changed_pass": dataset_changed_pass,
         "unique_dataset_views": int(len(signatures)),
         "expected_dataset_views": int(expected_views),
         "unique_signatures_pass": bool(len(signatures) == expected_views),
