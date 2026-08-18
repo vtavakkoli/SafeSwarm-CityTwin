@@ -9,12 +9,7 @@ x-benchmark-common: &benchmark-common
 services:
   prepare-data:
     <<: *benchmark-common
-    command:
-      - python
-      - experiments/prepare_real_city_data.py
-      - --grid-size
-      - ${GRID_SIZE:-40}
-      - --require-real-data
+    command: ["python", "experiments/prepare_real_city_data.py", "--grid-size", "${GRID_SIZE:-40}", "--require-real-data"]
 
   train:
     <<: *benchmark-common
@@ -37,43 +32,55 @@ services:
       - ${MAX_STEPS:-160}
       - --require-real-data
 
-  train-sparx:
+  upgrade-ppo:
     <<: *benchmark-common
     command:
       - python
-      - experiments/train_sparx_patterns.py
+      - experiments/upgrade_ppo_coordination_v5.py
       - --agents
       - ${AGENTS:-8}
       - --grid-size
       - ${GRID_SIZE:-40}
       - --rounds
-      - ${SPARX_ROUNDS:-8}
-      - --train-scenarios-per-candidate
-      - ${SPARX_TRAIN_SCENARIOS:-4}
+      - ${PPO_UPGRADE_ROUNDS:-2}
+      - --teacher-scenarios
+      - ${PPO_TEACHER_SCENARIOS:-9}
       - --validation-episodes
-      - ${SPARX_VALIDATION_EPISODES:-8}
+      - ${VALIDATION_EPISODES:-12}
       - --validation-repeats
-      - ${SPARX_VALIDATION_REPEATS:-2}
+      - ${VALIDATION_REPEATS:-2}
+      - --max-steps
+      - ${MAX_STEPS:-160}
+      - --require-real-data
+
+  train-prism:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/train_prism_patterns.py
+      - --agents
+      - ${AGENTS:-8}
+      - --grid-size
+      - ${GRID_SIZE:-40}
+      - --rounds
+      - ${PRISM_ROUNDS:-8}
+      - --train-scenarios-per-candidate
+      - ${PRISM_TRAIN_SCENARIOS:-4}
+      - --validation-episodes
+      - ${PRISM_VALIDATION_EPISODES:-8}
+      - --validation-repeats
+      - ${PRISM_VALIDATION_REPEATS:-2}
       - --max-steps
       - ${MAX_STEPS:-160}
       - --require-real-data
 
   test:
     <<: *benchmark-common
-    command:
-      - python
-      - experiments/test_real_city_policies.py
-      - --agents
-      - ${AGENTS:-8}
-      - --grid-size
-      - ${GRID_SIZE:-40}
-      - --episodes
-      - ${TEST_EPISODES:-20}
-      - --max-steps
-      - ${MAX_STEPS:-160}
-      - --model-dir
-      - results/train/checkpoints
-      - --require-real-data
+    command: ["python", "experiments/test_real_city_policies.py", "--agents", "${AGENTS:-8}", "--grid-size", "${GRID_SIZE:-40}", "--episodes", "${TEST_EPISODES:-20}", "--max-steps", "${MAX_STEPS:-160}", "--model-dir", "results/train/checkpoints", "--require-real-data"]
+
+  test-swap:
+    <<: *benchmark-common
+    command: ["python", "experiments/test_swap_protocol.py", "--agents", "${AGENTS:-8}", "--grid-size", "${GRID_SIZE:-40}", "--episodes", "${SWAP_EPISODES:-10}", "--dataset-seed-count", "${SWAP_SEED_COUNT:-3}", "--max-steps", "${MAX_STEPS:-160}", "--model-dir", "results/train/checkpoints", "--require-real-data"]
 
   pipeline:
     <<: *benchmark-common
@@ -85,18 +92,7 @@ services:
 
   benchmark-real-cities:
     <<: *benchmark-common
-    command:
-      - python
-      - experiments/run_city_benchmark.py
-      - --agents
-      - ${AGENTS:-8}
-      - --grid-size
-      - ${GRID_SIZE:-40}
-      - --episodes
-      - ${EPISODES:-10}
-      - --max-steps
-      - ${MAX_STEPS:-160}
-      - --require-real-data
+    command: ["python", "experiments/run_city_benchmark.py", "--agents", "${AGENTS:-8}", "--grid-size", "${GRID_SIZE:-40}", "--episodes", "${EPISODES:-10}", "--max-steps", "${MAX_STEPS:-160}", "--require-real-data"]
 
   benchmark-offline:
     <<: *benchmark-common

@@ -21,19 +21,20 @@ from src.agents.observable_marl import (
     ObservableMATPolicy,
     ObservableQMIXPolicy,
 )
+from src.agents.prism_ant import PRISMAntPolicy
+from src.agents.prism_pattern import prism_pattern_factories
 from src.agents.random_agent import RandomAgentPolicy
 from src.agents.safe_swarm_agent import SafeSwarmAgentPolicy
 from src.agents.safety_filtered_agent import SafetyFilteredAgentPolicy
-from src.agents.sparx_pattern import sparx_pattern_factories
 
 
 def strategy_factories(seed: int = 42) -> Dict[str, Callable[[], object]]:
-    """Return fresh policy factories so state never leaks across episodes.
+    """Return fresh observable-only policy factories.
 
-    Primary benchmark strategies obey the same partial-observability contract;
-    hidden mission coordinates/priority labels are reserved for evaluation.
-    SPARX X/Plus/Star are included here as *untuned* mechanism baselines; the
-    train/test pipeline replaces them with validation-selected checkpoints.
+    PRISM X/Plus/Star are untuned mechanism baselines in the generic benchmark.
+    The train/test workflow replaces them with validation-selected checkpoints.
+    ``SPARX`` is intentionally absent from v5 strategy names; the old module is
+    retained only as a source-compatibility alias for v4 experiments.
     """
 
     factories: Dict[str, Callable[[], object]] = {
@@ -45,6 +46,9 @@ def strategy_factories(seed: int = 42) -> Dict[str, Callable[[], object]]:
         "BeeSwarmSafe": BeeSwarmPolicy,
         "PSOSwarmSafe": PSOSwarmPolicy,
         "UA-HBAS-Safe": UncertaintyAwareBeeAntSwarmPolicy,
+        "PRISM-Ant-Safe": lambda: PRISMAntPolicy(
+            seed=seed, pattern_mode="star", strategy_name="PRISM-Ant-Safe"
+        ),
         "GRPO-Safe": lambda: ObservableGRPOPolicy(seed=seed),
         "IPPO-Safe": lambda: ObservableIPPOPolicy(seed=seed),
         "MAPPO-Safe": lambda: ObservableMAPPOPolicy(seed=seed),
@@ -53,5 +57,5 @@ def strategy_factories(seed: int = 42) -> Dict[str, Callable[[], object]]:
         "HAPPO-Safe": lambda: ObservableHAPPOPolicy(seed=seed),
         "MAT-Safe": lambda: ObservableMATPolicy(seed=seed),
     }
-    factories.update(sparx_pattern_factories(seed=seed))
+    factories.update(prism_pattern_factories(seed=seed))
     return factories

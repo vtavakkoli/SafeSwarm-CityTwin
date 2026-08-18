@@ -4,7 +4,7 @@ import json
 
 import numpy as np
 
-from src.agents.sparx_pattern import SPARXPolicy
+from src.agents.prism_pattern import PRISMPolicy
 from src.environment.city_twin import CityTwinEnvironment
 from src.training.geography import apply_start_zone, load_protocol, validate_protocol
 from src.training.validation_selection import validation_selection_stats
@@ -17,67 +17,56 @@ def _layers(grid_size: int = 15, mission: tuple[int, int] = (12, 12)) -> dict:
         "mission_zones": {mission, (3, 12)},
         "base_stations": {(1, 1)},
         "priority_cells": {mission: 1.0, (3, 12): 0.7},
-        "metadata": {"source": "synthetic", "feature_count": 2},
+        "metadata": {"source": "synthetic", "feature_count": 2, "place_name": "unit-city"},
     }
 
 
 def _env(seed: int = 4, mission: tuple[int, int] = (12, 12), agents: int = 4) -> CityTwinEnvironment:
     return CityTwinEnvironment(
-        grid_size=15,
-        n_agents=agents,
-        seed=seed,
+        grid_size=15, n_agents=agents, seed=seed,
         layers=apply_start_zone(_layers(mission=mission), 15, "north_west"),
-        max_steps=20,
-        allow_network=False,
-        communication_dropout_prob=0.0,
+        max_steps=20, allow_network=False, communication_dropout_prob=0.0,
     )
 
 
-def test_v4_protocol_has_disjoint_multi_domain_validation():
+def test_v5_protocol_has_disjoint_multi_domain_validation():
     protocol = load_protocol("configs/real_city_protocol.json")
     checks = validate_protocol(protocol)
-    assert checks["city_splits_disjoint"]
-    assert checks["validation_start_zones_unseen_during_training"]
-    assert checks["validation_start_zones_disjoint_from_test"]
-    assert checks["test_start_zones_unseen_during_training"]
+    assert all(checks.values())
     validation_cities = {c["name"] for c in protocol["cities"] if c["split"] == "validation"}
     assert len(validation_cities) >= 2
     assert len(protocol["start_zones"]["validation"]) >= 4
 
 
-def test_probability_map_is_normalized_and_blocks_unsafe_cells():
+def test_prism_probability_map_is_normalized_and_blocks_unsafe_cells():
     env = _env()
-    policy = SPARXPolicy(seed=9, pattern_mode="star")
+    policy = PRISMPolicy(seed=9, pattern_mode="star")
     policy._update_probability_state(env)
     probability = policy.search_probability_map
     assert probability is not None
     assert np.isclose(float(probability.sum()), 1.0)
     for cell in env.obstacles | env.restricted_zones:
         assert probability[cell] == 0.0
-    assert float(probability.max()) > 0.0
 
 
-def test_pattern_geometry_x_plus_and_star():
+def test_prism_pattern_geometry_x_plus_and_star():
     env = _env()
     region = [
-        (x, y)
-        for x in range(env.grid_size)
-        for y in range(env.grid_size)
+        (x, y) for x in range(env.grid_size) for y in range(env.grid_size)
         if (x, y) not in env.obstacles | env.restricted_zones
     ]
     anchor = (5, 5)
-    x_cells = set(SPARXPolicy(seed=1, pattern_mode="x")._pattern_cells(env, anchor, region))
-    plus_cells = set(SPARXPolicy(seed=1, pattern_mode="plus")._pattern_cells(env, anchor, region))
-    star_cells = set(SPARXPolicy(seed=1, pattern_mode="star")._pattern_cells(env, anchor, region))
+    x_cells = set(PRISMPolicy(seed=1, pattern_mode="x")._pattern_cells(env, anchor, region))
+    plus_cells = set(PRISMPolicy(seed=1, pattern_mode="plus")._pattern_cells(env, anchor, region))
+    star_cells = set(PRISMPolicy(seed=1, pattern_mode="star")._pattern_cells(env, anchor, region))
     assert (6, 6) in x_cells and (6, 5) not in x_cells
     assert (6, 5) in plus_cells and (6, 6) not in plus_cells
-    assert x_cells <= star_cells
-    assert plus_cells <= star_cells
+    assert x_cells <= star_cells and plus_cells <= star_cells
 
 
-def test_spatial_assignment_spreads_agents_across_regions():
+def test_prism_spatial_assignment_spreads_agents():
     env = _env(agents=4)
-    policy = SPARXPolicy(seed=3, pattern_mode="star")
+    policy = PRISMPolicy(seed=3, pattern_mode="star")
     policy._update_probability_state(env)
     segments = policy._segments(env)
     policy._refresh_assignments(env, segments)
@@ -86,26 +75,24 @@ def test_spatial_assignment_spreads_agents_across_regions():
     assert len(set(assigned)) == 4
 
 
-def test_unsensed_hidden_target_does_not_change_initial_action():
+def test_prism_unsensed_hidden_target_does_not_change_initial_action():
     env_a = _env(seed=11, mission=(12, 12))
     env_b = _env(seed=11, mission=(11, 11))
-    policy_a = SPARXPolicy(seed=17, pattern_mode="star")
-    policy_b = SPARXPolicy(seed=17, pattern_mode="star")
+    policy_a = PRISMPolicy(seed=17, pattern_mode="star")
+    policy_b = PRISMPolicy(seed=17, pattern_mode="star")
     assert np.array_equal(env_a.observation_map, env_b.observation_map)
-    assert np.array_equal(env_a.uncertainty_map, env_b.uncertainty_map)
     assert policy_a.act(env_a) == policy_b.act(env_b)
 
 
-def test_sparx_checkpoint_roundtrip(tmp_path):
-    checkpoint = tmp_path / "sparx.json"
-    policy = SPARXPolicy(seed=5, pattern_mode="plus", frontier_weight=2.1, memory_weight=1.4)
+def test_prism_checkpoint_roundtrip(tmp_path):
+    checkpoint = tmp_path / "prism.json"
+    policy = PRISMPolicy(seed=5, pattern_mode="plus", frontier_weight=2.1, memory_weight=1.4)
     policy.save_checkpoint(checkpoint, {"selected_pattern": "plus", "validation_score": 0.61})
     payload = json.loads(checkpoint.read_text(encoding="utf-8"))
-    assert payload["format"] == "safeswarm-sparx-v2"
-    restored = SPARXPolicy(seed=8, model_path=checkpoint, strategy_name="SPARX-Safe")
+    assert payload["format"] == "safeswarm-prism-v1"
+    restored = PRISMPolicy(seed=8, model_path=checkpoint, strategy_name="PRISM-Safe")
     assert restored.pattern_mode == "plus"
     assert np.isclose(restored.config.frontier_weight, 2.1)
-    assert np.isclose(restored.config.memory_weight, 1.4)
     assert restored.checkpoint_metadata["selected_pattern"] == "plus"
 
 

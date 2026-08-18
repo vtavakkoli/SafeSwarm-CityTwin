@@ -1,283 +1,137 @@
 # SafeSwarm-CityTwin
 
-A reproducible research benchmark for **safety-constrained multi-agent urban search** on real OpenStreetMap city snapshots. SafeSwarm separates training, robust validation, and held-out testing; enforces an observable-only policy contract; and compares learned MARL controllers with bio-inspired swarm search.
+A reproducible research benchmark for **safety-constrained multi-agent urban search** on cached real OpenStreetMap city snapshots. SafeSwarm separates training, robust validation, primary held-out testing, and post-selection stress testing; all primary policies obey an observable-only action contract.
 
-## v4: generalization-first model selection + SPARX
+## v5: PRISM, PRISM-Ant, SWAP, and stronger learned baselines
 
-The v3 real-city experiment exposed a second failure mode after the earlier safety/credit problems were fixed: PPO-family controllers could look strong on the validation domain and still generalize poorly to unseen cities. The held-out policies travelled extensively but produced high redundant coverage, while AntSwarmSafe spread the team more effectively and discovered far more targets.
+SafeSwarm v5 is driven by the real v4 finding that `AntSwarmSafe` generalized substantially better than the learned PPO-family controllers. The learned policies travelled far but revisited a large fraction of already-covered cells; AntSwarm's novelty, pheromone and anti-clustering inductive bias produced much stronger held-out target discovery.
 
-v4 addresses that problem in two complementary ways:
+v5 addresses that failure without changing the test score or forcing a preferred winner.
 
-1. **robust checkpoint selection** across multiple unseen validation cities and start zones; and
-2. a new explicit swarm-search algorithm, **SPARX — Swarm Probability-map Allocation & Region eXploration**.
+### 1. SPARX is renamed PRISM
 
-The held-out test still decides the winner. The repository does not alter scores or select a model from test results.
+The v4 search controller is now **PRISM — Probability-guided Region-Integrated Search with Memory**. The rename avoids confusion with unrelated uses of the SPARX acronym.
+
+PRISM retains the scientifically relevant mechanism:
+
+- observable-only signed shared swarm memory;
+- normalized search-utility probability map;
+- uncertainty/frontier/pheromone/novelty evidence;
+- repulsion from revisited and resolved cells;
+- spatial region segmentation;
+- distance/battery-aware multi-agent region assignment;
+- X, Plus, and Star local search geometries;
+- validation-only weight and pattern selection.
+
+The legacy `sparx_pattern.py` module remains only as a compatibility alias for reproducing v4 checkpoints. **No v5 benchmark strategy is named SPARX.**
+
+### 2. PRISM-Ant-Safe
+
+**PRISM-Ant-Safe** combines complementary strengths instead of replacing one heuristic with another:
+
+- **PRISM** decides *where the team should search*: probability memory, map segmentation, diverse region assignments, and structured pattern goals;
+- **AntSwarm** influences *how an agent searches locally*: observed priority, uncertainty×novelty, pheromone following, strong revisit suppression, and anti-clustering.
+
+The fusion strength is selected on the validation split only. The held-out test and SWAP cannot tune it.
+
+### 3. SWAP: Seeded World Alternate Protocol
+
+Changing only the episode RNG seed does **not** create a different real OSM dataset because the cached physical city layer is keyed by place/grid/radius. v5 therefore adds **SWAP — Seeded World Alternate Protocol**.
+
+For each SWAP dataset seed, SafeSwarm keeps the same real city geometry—obstacles, restricted cells and bases—but deterministically builds a different priority-stratified hidden mission subset. Each view records a stable signature and target count.
+
+SWAP is deliberately **post-selection only**. It answers a stronger question: does the frozen ranking survive different hidden mission layouts in the same unseen cities?
+
+### 4. Why IPPO/MAPPO/HAPPO/GRPO were weak, and what v5 changes
+
+The v4 implementation exposed several repository-level limitations beyond algorithm theory:
+
+1. loaded PPO checkpoints still sampled actions stochastically during evaluation;
+2. IPPO/MAPPO/HAPPO had no explicit global frontier/goal allocation, leaving the memory/frontier coordination feature slots effectively unused;
+3. only GRPO received teacher imitation;
+4. local PPO preferences could therefore become long high-redundancy walks even after robust validation selection.
+
+v5 adds:
+
+- **deterministic checkpoint inference** for learned-policy validation/test;
+- an observable **shared frontier/evidence goal coordinator** for IPPO/MAPPO/HAPPO and an auxiliary coordination signal for GRPO;
+- distinct multi-agent global goals to reduce overlap;
+- generic safe-action distillation from `AntSwarmSafe` and `UA-HBAS-Safe` for **all four trainable policies**;
+- a separate validation-gated upgrade stage: a distilled checkpoint replaces the base checkpoint only if the multi-domain robust validation score improves.
+
+This is still an auditable NumPy research implementation, not a claim of full deep-neural reproduction of the original IPPO/MAPPO/HAPPO papers.
 
 ## Experimental protocol
 
-`configs/real_city_protocol.json` is the experiment contract.
+| Split | Cities | Starting zones | May select a model? |
+|---|---|---|---|
+| Train | Vienna, London, Berlin | north-west, south-east, center | training only |
+| Validation | Amsterdam, Prague | west, east, north, south | **yes** |
+| Primary test | San Francisco, Paris | north-east, south-west | **no** |
+| SWAP test | test cities with seed-indexed alternate mission views | test zones | **no** |
 
-| Split | Cities | Starting zones |
-|---|---|---|
-| Train | Vienna, London, Berlin | north-west, south-east, center |
-| Validation | Amsterdam, Prague | west, east, north, south |
-| Test | San Francisco, Paris | north-east, south-west |
+Ground-truth mission coordinates and priority labels are evaluator data. Policies may use sensed observations, uncertainty/frontiers, pheromones, visits, known constraints, battery, communication and shared observable swarm state.
 
-The city sets are disjoint. Validation start zones are unseen during training and disjoint from test start zones. Test cities and test starts are never consulted for checkpoint or pattern selection.
-
-Real snapshots are downloaded with OSMnx, cached under `data/cache/`, and attributed to © OpenStreetMap contributors. Synthetic fallback is labelled and rejected by the real-data Docker workflow.
-
-## Fair observation contract
-
-Primary benchmark policies may use only information available at execution time:
-
-- sensed observations;
-- uncertainty/frontier state;
-- pheromone and visit history;
-- current swarm positions and communication state;
-- battery/base information;
-- known obstacles and restricted zones.
-
-Ground-truth mission coordinates and hidden priority labels are reserved for evaluation. This applies to learned policies and the primary Ant/Bee/PSO/Greedy/SafeSwarm baselines.
-
-## PPO/GRPO v4 checkpoint selection
-
-The v3 PPO/GRPO learner remains in place: safe-action masking before sampling, per-agent difference rewards, per-agent GAE, centralized value baseline during training, minibatch PPO, entropy annealing, gradient clipping, teacher bootstrap for GRPO, and validation-based early stopping.
-
-v4 changes **which weight is promoted**. A validation candidate receives the conservative score
+## v5 pipeline
 
 ```text
-robust = mean
-         - 0.50 × CI95
-         - 0.20 × domain_std
-         - 0.10 × (mean - worst_domain)
+prepare real OSM snapshots
+  ↓
+base PPO/GRPO training + robust validation checkpoints
+  ↓
+v5 coordination + teacher-distillation upgrade
+  ↓
+PRISM X / Plus / Star tuning + validation pattern selection
+  ↓
+PRISM-Ant validation fusion selection
+  ↓
+frozen primary held-out test
+  ↓
+SWAP seed-shift stress test
+  ↓
+combined report
 ```
 
-The final checkpoint is updated only when this robust validation score improves. Every improvement is archived under:
-
-```text
-results/train/validation-improvements/<strategy>/epoch_XXX.json
-```
-
-This avoids treating one unusually favorable validation topology as sufficient evidence of generalization.
-
-## SPARX — probability memory + region allocation + pattern search
-
-SPARX targets the high-redundancy failure mode directly.
-
-### 1. Shared search-probability map
-
-At each step SPARX builds a normalized search-utility probability map from observable evidence:
-
-- confidence-weighted sensed priority;
-- unexplored uncertainty;
-- exploration frontiers;
-- pheromones;
-- visit novelty/revisit pressure;
-- signed shared swarm memory;
-- current swarm occupancy.
-
-Resolved targets become repulsive in memory so agents move away after a successful discovery. Positive evidence can diffuse through traversable four-neighbor geography but never through known obstacles/restricted cells.
-
-The map is a **search-allocation probability**, not a calibrated probability that a hidden target occupies a cell.
-
-### 2. City segmentation
-
-The traversable grid is divided into approximately `ceil(sqrt(number_of_agents))²` spatial regions. Each region is scored by probability mass, frontier density, unexplored share, revisit pressure, agent distance, and battery state.
-
-Agents are assigned to different promising regions before local movement is selected. This explicit swarm-level task allocation is the major difference from purely local PPO action preferences.
-
-### 3. X / + / ★ search patterns
-
-Three pattern mechanisms are tuned and reported separately:
-
-```text
-SPARX-X-Safe          diagonal X rays
-
-\   /
- \ /
-  X
- / \
-/   \
-
-SPARX-Plus-Safe       cardinal + rays
-
-  |
---+--
-  |
-
-SPARX-Star-Safe       X + Plus, eight rays
-
-\ | /
-- ★ -
-/ | \
-```
-
-`SPARX-Safe` is the pattern selected **only from validation**. The held-out X/Plus/Star rows remain visible for mechanism analysis but are never used retrospectively to select the final pattern.
-
-Full methodology: [`docs/SPARX_V4.md`](docs/SPARX_V4.md).
-
-## Algorithms
-
-The benchmark includes:
-
-- **SPARX-Safe** — validation-selected probability-memory/region-pattern search;
-- **SPARX-X-Safe / SPARX-Plus-Safe / SPARX-Star-Safe** — pattern mechanism variants;
-- **GRPO-Safe** — learned behavior selection + signed swarm memory + propagation;
-- **IPPO-Safe, MAPPO-Safe, HAPPO-Safe** — trained PPO-family policies;
-- **AntSwarmSafe, BeeSwarmSafe, PSOSwarmSafe, UA-HBAS-Safe**;
-- observable fixed GRPO/IPPO/MAPPO/QMIX/MADDPG/HAPPO/MAT baselines;
-- Greedy, SafeSwarm and random/reference policies.
-
-GRPO ablations remain available:
-
-- `GRPO-Safe-Ablation-NoMemory`;
-- `GRPO-Safe-Ablation-NoPropagation`;
-- `GRPO-Safe-Ablation-NoLearnedBehavior`.
-
-## Reproduce
-
-### 1. Prepare real city data
-
-```bash
-docker compose up --build prepare-data
-```
-
-### 2. Train PPO/GRPO and save every validation improvement
-
-```bash
-docker compose up --build train
-```
-
-Outputs include:
-
-```text
-results/train/
-├── checkpoints/
-├── candidates/
-├── validation-improvements/
-├── training_history.csv
-├── validation_history.csv
-├── validation_improvements.json
-├── training_summary.csv
-└── teacher_bootstrap.json
-```
-
-### 3. Tune X / + / ★ SPARX
-
-```bash
-docker compose up --build train-sparx
-```
-
-Outputs include:
-
-```text
-results/train/
-├── checkpoints/
-│   ├── sparx_safe.json
-│   ├── sparx_x_safe.json
-│   ├── sparx_plus_safe.json
-│   └── sparx_star_safe.json
-├── sparx-validation-improvements/
-├── sparx_tuning_history.csv
-├── sparx_pattern_summary.csv
-└── sparx_manifest.json
-```
-
-### 4. Frozen held-out test
-
-```bash
-docker compose up --build test
-```
-
-The test evaluates San Francisco and Paris with unseen north-east/south-west starts and writes 95% confidence intervals, per-city rankings, pattern diagnostics, discovery, coverage, redundancy, energy, safety and runtime.
-
-### 5. Complete pipeline
+Run everything:
 
 ```bash
 docker compose up --build pipeline
 ```
 
-For deterministic CI without network access:
+Or run stages explicitly:
 
 ```bash
-docker compose up --build pipeline-offline
+docker compose up --build prepare-data
+docker compose up --build train
+docker compose up --build upgrade-ppo
+docker compose up --build train-prism
+docker compose up --build test
+docker compose up --build test-swap
 ```
 
-## Evaluation score
-
-Every strategy uses the same hardware-independent operational score:
-
-| Component | Weight |
-|---|---:|
-| Weighted target discovery | 35% |
-| Traversable-area coverage | 20% |
-| Actual safety | 20% |
-| Energy efficiency | 10% |
-| Coordination / low redundancy | 10% |
-| Communication availability | 5% |
-
-Runtime is reported separately. A credible improvement should therefore be visible not only in the aggregate score but also in discovery, coverage, redundancy and energy.
-
-## Research integrity
-
-SafeSwarm v4 deliberately separates optimization from evaluation:
-
-- training uses only training cities/start zones;
-- PPO/GRPO weights are selected by robust validation only;
-- each validation-improving checkpoint is retained;
-- SPARX weights are tuned on training and gated by validation improvement;
-- X/Plus/Star selection uses validation only;
-- San Francisco/Paris never influence model or pattern selection;
-- hidden target labels are unavailable to primary policies;
-- confidence intervals are reported on held-out episodes;
-- reports always show the actual held-out winner, even if it is not SPARX or GRPO.
-
-For publication claims, run several independent top-level training/tuning seeds and report per-city/per-start-zone distributions as well as 95% confidence intervals.
-
-## Repository layout
+Useful outputs:
 
 ```text
-configs/
-  real_city_protocol.json
-experiments/
-  prepare_real_city_data.py
-  train_real_city_policies.py       # stable entry point → v4
-  train_real_city_policies_v4.py
-  train_sparx_patterns.py
-  test_real_city_policies.py
-  run_train_test_pipeline.py
-  build_train_test_report.py
-src/
-  agents/
-    grpo_v3.py
-    ppo_v3.py
-    sparx_pattern.py
-    observable_utils.py
-    bio_swarm_agents.py
-  environment/
-  evaluation/
-  safety/
-  training/
-    geography.py
-    policy_learning.py
-    validation_selection.py
-docs/
-  SPARX_V4.md
-tests/
-results/
-data/cache/
-docker-compose.yaml
+results/train/training_summary.csv
+results/train/coordination_upgrade_summary.csv
+results/train/prism_pattern_summary.csv
+results/train/prism_ant_summary.csv
+results/train/prism_manifest.json
+results/train/checkpoints/prism_safe.json
+results/train/checkpoints/prism_ant_safe.json
+results/test/tables/overall_ranking.csv
+results/swap-test/tables/seed_ranking.csv
+results/swap-test/tables/overall_ranking.csv
+results/swap-test/manifest.json
+results/report.html
 ```
 
-## Tests
+## Scientific interpretation
 
-```bash
-docker compose up --build unit-test
-```
+The repository never assumes PRISM-Ant, PRISM, GRPO, or a PPO baseline must beat AntSwarm. The correct result is whichever frozen method wins the primary held-out and SWAP evaluations. If AntSwarm remains strongest after v5, that is evidence for the value of its search inductive bias rather than a reason to alter the benchmark.
 
-Tests cover safety-aware credit, GRPO state/memory behavior, geographic split integrity, SPARX probability normalization, hidden-target leakage protection, region assignment, X/Plus/Star geometry, SPARX checkpoint round-tripping and robust validation scoring. GitHub Actions also runs the complete offline v4 smoke pipeline and verifies the generated SPARX artifacts.
+For publication results, run multiple independent top-level training seeds and report 95% confidence intervals, per-city/per-SWAP-seed rankings, discovery, coverage, redundancy, energy, safety, and ablations—not only the aggregate operational score.
 
-## Scope
+## License and data
 
-This is a research benchmark, not a claim of universal algorithm superiority. The NumPy PPO/critic stack is intentionally auditable and should not be presented as a full deep-neural reproduction of the original IPPO/MAPPO/HAPPO papers. SPARX is a new benchmark algorithm whose superiority, if any, must be established by the frozen held-out experiment rather than assumed from its design.
+Repository code is licensed under the project license. Real geographic snapshots are derived from OpenStreetMap and must retain **© OpenStreetMap contributors** attribution and applicable ODbL terms. Synthetic mode exists for deterministic CI/development and must not be presented as real-world evidence.
