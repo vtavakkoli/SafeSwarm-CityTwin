@@ -1,4 +1,4 @@
-"""Run SafeSwarm v5 prepare → learn → coordinate → PRISM → test → SWAP."""
+"""Run SafeSwarm v6 prepare → learn → coordinate → PRISM → EARS → test → SWAP."""
 
 from __future__ import annotations
 
@@ -32,17 +32,19 @@ def main() -> None:
     train = [sys.executable, "experiments/train_real_city_policies.py", *common]
     coordinate = [sys.executable, "experiments/upgrade_ppo_coordination_v5.py", *common]
     prism = [sys.executable, "experiments/train_prism_patterns.py", *common]
+    ears = [sys.executable, "experiments/train_ears_v6.py", *common]
     test = [sys.executable, "experiments/test_real_city_policies.py", *common]
     swap = [sys.executable, "experiments/test_swap_protocol.py", *common]
 
     if args.quick:
-        for command in (train, coordinate, prism, test, swap):
+        for command in (train, coordinate, prism, ears, test, swap):
             command.append("--quick")
 
     _run(prepare)
     _run(train)
     _run(coordinate)
     _run(prism)
+    _run(ears)
     _run(test)
     _run(swap)
     _run([sys.executable, "experiments/build_train_test_report.py"])
