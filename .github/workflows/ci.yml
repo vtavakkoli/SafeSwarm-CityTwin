@@ -14,7 +14,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -76,22 +76,52 @@ jobs:
           assert (swap_datasets["target_count"] < swap_datasets["original_target_count"]).all()
           names = set(ranking["strategy"])
           assert {
-              "AntSwarmSafe",
-              "PRISM-Ant-Safe",
-              "EARS-Safe",
-              "EARS-NP-Safe",
-              "H-MAPPO-EARS-Safe",
+              "AntSwarmSafe", "PRISM-Ant-Safe", "EARS-Safe",
+              "EARS-NP-Safe", "H-MAPPO-EARS-Safe",
           } <= names
           assert not any(name.startswith("SPARX") for name in names)
+          PY
+      - name: Offline v7 publication validation smoke suite
+        run: |
+          python experiments/run_publication_pipeline_v7.py --offline --quick
+          test -f results/publication/test/tables/overall_ranking.csv
+          test -f results/publication/swap-test/tables/overall_ranking.csv
+          test -f results/publication/statistics/tables/paired_test.csv
+          test -f results/publication/statistics/tables/test_citymean_mean_std.csv
+          test -f results/publication/ablations/tables/overall_mean_std.csv
+          test -f results/publication/ablations/tables/trigger_summary.csv
+          test -f results/publication/sensitivity/tables/sensitivity_summary.csv
+          test -f results/publication/visualization/winner_episode.gif
+          test -f results/publication/visualization/winner_visit_heatmap.png
+          test -f results/publication/visualization/winner_trajectory_map.png
+          test -f results/publication/report.html
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+
+          protocol = json.loads(Path("configs/publication_protocol_v7.json").read_text())
+          assert len([c for c in protocol["cities"] if c["split"] == "test"]) == 8
+          assert protocol["publication_contract"]["post_selection_only"] is True
+          paired = pd.read_csv("results/publication/statistics/tables/paired_test.csv")
+          assert "operational_score" in set(paired["metric"])
+          ablations = pd.read_csv("results/publication/ablations/tables/overall_mean_std.csv")
+          assert {
+              "EARS-Safe", "EARS-Ablation-StagnationOnly", "EARS-Ablation-RevisitOnly",
+              "EARS-Ablation-CongestionOnly", "EARS-Ablation-NoEnergyBatteryAware",
+          } <= set(ablations["strategy"])
+          sensitivity = pd.read_csv("results/publication/sensitivity/tables/sensitivity_summary.csv")
+          assert int(sensitivity.iloc[0]["random_scenarios"]) > 0
           PY
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: safeswarm-v6-ci-results
+          name: safeswarm-v7-publication-ci-results
           path: |
             results/ci-benchmark
             results/prepare-data
             results/train
             results/test
             results/swap-test
+            results/publication
             results/report.html
