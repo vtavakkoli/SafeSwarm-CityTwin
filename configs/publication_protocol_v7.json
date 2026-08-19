@@ -1,0 +1,40 @@
+{
+  "protocol_version": "7.0-publication",
+  "description": "Post-selection publication validation protocol. Training and validation domains remain identical to v6; eight geographically diverse test cities are evaluation-only and cannot change any checkpoint or EARS parameter.",
+  "cities": [
+    {"name": "Vienna", "place": "Vienna, Austria", "radius_m": 1400, "split": "train"},
+    {"name": "London", "place": "London, United Kingdom", "radius_m": 1400, "split": "train"},
+    {"name": "Berlin", "place": "Berlin, Germany", "radius_m": 1400, "split": "train"},
+    {"name": "Amsterdam", "place": "Amsterdam, Netherlands", "radius_m": 1400, "split": "validation"},
+    {"name": "Prague", "place": "Prague, Czechia", "radius_m": 1400, "split": "validation"},
+    {"name": "San Francisco", "place": "San Francisco, California, USA", "radius_m": 1400, "split": "test"},
+    {"name": "Paris", "place": "Paris, France", "radius_m": 1400, "split": "test"},
+    {"name": "Barcelona", "place": "Barcelona, Spain", "radius_m": 1400, "split": "test"},
+    {"name": "Rome", "place": "Rome, Italy", "radius_m": 1400, "split": "test"},
+    {"name": "New York", "place": "Manhattan, New York, USA", "radius_m": 1400, "split": "test"},
+    {"name": "Chicago", "place": "Chicago, Illinois, USA", "radius_m": 1400, "split": "test"},
+    {"name": "Tokyo", "place": "Tokyo, Japan", "radius_m": 1400, "split": "test"},
+    {"name": "Melbourne", "place": "Melbourne, Victoria, Australia", "radius_m": 1400, "split": "test"}
+  ],
+  "start_zones": {
+    "train": ["north_west", "south_east", "center"],
+    "validation": ["west", "east", "north", "south"],
+    "test": ["north_east", "south_west"]
+  },
+  "integrity_rules": {
+    "city_splits_disjoint": true,
+    "validation_start_zones_unseen_during_training": true,
+    "validation_start_zones_disjoint_from_test": true,
+    "test_start_zones_unseen_during_training": true,
+    "checkpoint_selection_uses_no_test_metrics": true
+  },
+  "publication_contract": {
+    "checkpoint_source_protocol": "configs/real_city_protocol.json",
+    "post_selection_only": true,
+    "test_city_count": 8,
+    "test_results_may_not_change_models": true,
+    "swap_results_may_not_change_models": true,
+    "ablation_results_may_not_change_models": true,
+    "sensitivity_results_may_not_change_models": true
+  }
+}

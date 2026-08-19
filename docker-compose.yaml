@@ -111,6 +111,14 @@ services:
     <<: *benchmark-common
     command: ["python", "experiments/run_train_test_pipeline.py", "--offline", "--quick"]
 
+  publication:
+    <<: *benchmark-common
+    command: ["python", "experiments/run_publication_pipeline_v7.py", "--require-real-data"]
+
+  publication-offline:
+    <<: *benchmark-common
+    command: ["python", "experiments/run_publication_pipeline_v7.py", "--offline", "--quick"]
+
   benchmark-real-cities:
     <<: *benchmark-common
     command: ["python", "experiments/run_city_benchmark.py", "--agents", "${AGENTS:-8}", "--grid-size", "${GRID_SIZE:-40}", "--episodes", "${EPISODES:-10}", "--max-steps", "${MAX_STEPS:-160}", "--require-real-data"]

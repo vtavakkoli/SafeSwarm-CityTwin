@@ -1,9 +1,8 @@
 """Evaluate frozen SafeSwarm v6 policies using the v5-compatible evaluator.
 
-The underlying episode/ranking code is intentionally reused so adding EARS
-cannot silently change the benchmark metric or held-out protocol.  v6 only
-extends the policy registry and manifest with the new post-validation EARS
-controllers.
+The underlying episode/ranking code is intentionally reused so EARS cannot
+silently change the benchmark metric. v6 extends the policy registry/manifest
+and corrects the inherited HTML metadata to describe EARS explicitly.
 """
 
 from __future__ import annotations
@@ -40,9 +39,31 @@ def main() -> None:
                 "validation-only; held-out test and SWAP never select PPO/GRPO weights, "
                 "PRISM pattern/fusion, or EARS event/negative-pheromone/hierarchical parameters"
             ),
+            "evaluation_city_count": int(len(manifest.get("cities", []))),
+            "evaluation_scope": (
+                "post-selection held-out evaluation; when publication_protocol_v7 is used, "
+                "the expanded test cities remain evaluation-only"
+            ),
         }
     )
     manifest_path.write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
+
+    # v6 intentionally reuses the v5 evaluator implementation, but the generated
+    # HTML must not mislabel a v6 EARS result as v5.
+    report_path = output / "report.html"
+    if report_path.exists():
+        html = report_path.read_text(encoding="utf-8")
+        html = html.replace("SafeSwarm v5 Held-out Test", "SafeSwarm v6 Held-out Test")
+        html = html.replace("SafeSwarm v5 · Held-out Real-City Test", "SafeSwarm v6 · Held-out Real-City Test")
+        html = html.replace(
+            "PRISM + PRISM-Ant · deterministic learned-policy inference · unseen cities/starts",
+            "EARS + PRISM-Ant · frozen post-validation policies · unseen cities/starts",
+        )
+        html = html.replace(
+            "PPO/GRPO weights, PRISM pattern/weights and PRISM-Ant fusion parameters are selected on training + validation only. This held-out test cannot change them.",
+            "PPO/GRPO weights, PRISM parameters, and EARS trigger/relocation parameters are selected on training + validation only. This held-out test cannot change them.",
+        )
+        report_path.write_text(html, encoding="utf-8")
 
 
 if __name__ == "__main__":

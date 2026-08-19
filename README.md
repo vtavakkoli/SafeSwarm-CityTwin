@@ -67,7 +67,7 @@ This avoids forcing MAPPO to relearn the low-level Ant heuristic that already ge
 |---|---|---|---|
 | Train | Vienna, London, Berlin | north-west, south-east, center | training only |
 | Validation | Amsterdam, Prague | west, east, north, south | **yes** |
-| Primary test | San Francisco, Paris | north-east, south-west | **no** |
+| Primary v6 test | San Francisco, Paris | north-east, south-west | **no** |
 | SWAP test | test cities with seed-indexed alternate mission views | test zones | **no** |
 
 Ground-truth mission coordinates and hidden priority labels are evaluator data. Policies may use sensed observations, uncertainty/frontiers, pheromones, visits, known constraints, battery, communication, and shared observable swarm state.
@@ -98,19 +98,90 @@ Run everything:
 docker compose up --build pipeline
 ```
 
-Or run stages explicitly:
+## v7 publication-validation suite
+
+v7 does **not** train a new method. It freezes the v6 checkpoints and adds the evidence reviewers typically need before a publication claim.
+
+### Expanded post-selection geography
+
+`configs/publication_protocol_v7.json` keeps the original train/validation cities unchanged and expands the evaluation-only test set to eight cities:
+
+- San Francisco and Paris (the original v6 held-out cities);
+- Barcelona and Rome (dense/irregular European street structure);
+- Manhattan/New York and Chicago (US grid-dominant urban structure);
+- Tokyo and Melbourne (additional geographically distinct urban layouts).
+
+These cities may not select or update EARS.
+
+### Paired and hierarchical statistics
+
+`experiments/analyze_publication_statistics_v7.py` pairs EARS and Ant on the same city, start zone, episode and seed, then reports:
+
+- paired bootstrap 95% confidence intervals;
+- a two-sided paired randomization/permutation p-value;
+- hierarchical bootstrap 95% intervals with episodes nested inside cities;
+- paired effect size and win fraction;
+- episode-level and across-city **mean ± standard deviation** tables.
+
+### EARS mechanism ablations
+
+`experiments/test_ears_ablations_v7.py` uses the same frozen EARS checkpoint and evaluates:
+
+- full EARS;
+- stagnation-only triggering;
+- revisit-only triggering;
+- congestion-only triggering;
+- relocation with energy and battery-return awareness removed;
+- the unchanged `AntSwarmSafe` baseline.
+
+Trigger counts and Ant-vs-relocation fractions are reported per city so the paper can test the mechanism explanation rather than only the final score.
+
+### Operational-score sensitivity
+
+`experiments/score_sensitivity_v7.py` retains the published operational score as the primary metric, then perturbs component weights by ±25% and renormalizes them. It reports how often EARS still beats Ant and how the EARS-minus-Ant margin changes. This guards against a result that exists only for one hand-picked composite weighting.
+
+### Full publication SWAP
+
+The publication pipeline runs SWAP again on the expanded frozen test set. Multiple deterministic alternate hidden-target views are evaluated after all checkpoints are fixed.
+
+### Qualitative winner episode
+
+`experiments/visualize_winner_episode_v7.py` creates one reproducible frozen winner episode with:
+
+- `winner_episode.gif` — animated agent motion and detection progression;
+- `winner_visit_heatmap.png` — visit intensity / overlap;
+- `winner_trajectory_map.png` — static trajectories and detection order;
+- `detection_events.csv` and `summary.json`.
+
+Mission target markers in these figures are explicitly post-evaluation overlays; policies never receive hidden target coordinates.
+
+### Run the publication suite
+
+If v6 checkpoints already exist, they are reused. Otherwise the original v6 train/validation pipeline runs first and is frozen before the v7 evaluation starts.
 
 ```bash
-docker compose up --build prepare-data
-docker compose up --build train
-docker compose up --build upgrade-ppo
-docker compose up --build train-prism
-docker compose up --build train-ears
-docker compose up --build test
-docker compose up --build test-swap
+docker compose up --build publication
 ```
 
-Useful v6 outputs:
+For a deterministic CI-sized synthetic smoke test:
+
+```bash
+docker compose up --build publication-offline
+```
+
+Final outputs are collected under:
+
+```text
+results/publication/test/
+results/publication/swap-test/
+results/publication/statistics/
+results/publication/ablations/
+results/publication/sensitivity/
+results/publication/visualization/
+results/publication/report.html
+```
+
+## Useful v6 outputs
 
 ```text
 results/train/ears_candidate_history.csv
@@ -127,9 +198,9 @@ results/report.html
 
 ## Scientific interpretation
 
-`AntSwarmSafe` is intentionally left unchanged. EARS is successful only if the **frozen** event-driven variants improve the held-out/SWAP result without using test feedback—especially by lowering redundancy, energy, and distance while preserving Ant-level target discovery.
+`AntSwarmSafe` is intentionally left unchanged. EARS is successful only if the **frozen** event-driven variants improve the held-out/SWAP result without using test feedback—especially by lowering redundancy, energy, and distance while preserving or improving Ant-level target discovery.
 
-The repository never forces EARS, PRISM, MAPPO, or any other method to win. Publication claims should report multiple independent top-level seeds, 95% confidence intervals, per-city/per-SWAP-seed rankings, target discovery, coverage, redundancy, energy, distance, safety, and mechanism ablations.
+The v7 publication report adds an evidence gate, not a model-selection gate. Strong publication support requires consistent multi-city/SWAP behavior, paired and hierarchical confidence intervals, raw-metric agreement with the proposed mechanism, mechanism ablations, and score-weight robustness. The repository never forces EARS, PRISM, MAPPO, or any other method to win.
 
 ## License and data
 
