@@ -136,7 +136,9 @@ def main() -> None:
             episode_seed = args.seed + city_index * 10000 + episode
             zoned = apply_start_zone(layers, args.grid_size, zone)
             factories: dict[str, Any] = {
-                "AntSwarmSafe": lambda seed=episode_seed: AntSwarmPolicy(seed=seed),
+                # AntSwarmPolicy is deterministic and has no seed constructor;
+                # environment stochasticity remains paired through episode_seed.
+                "AntSwarmSafe": lambda: AntSwarmPolicy(),
                 "EARS-Safe": lambda seed=episode_seed: EARSPolicy(
                     seed=seed, model_path=checkpoint, strategy_name="EARS-Safe"
                 ),
