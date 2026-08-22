@@ -172,6 +172,22 @@ services:
       - results/demo/top4-real-city
       - --require-real-data
 
+  demo-top4-offline:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/demo_top4_real_city.py
+      - --cities
+      - San Francisco
+      - --start-zone
+      - north_east
+      - --model-dir
+      - results/train/checkpoints
+      - --output-root
+      - results/demo/top4-offline
+      - --offline
+      - --quick
+
   benchmark-real-cities:
     <<: *benchmark-common
     command: ["python", "experiments/run_city_benchmark.py", "--agents", "${AGENTS:-8}", "--grid-size", "${GRID_SIZE:-40}", "--episodes", "${EPISODES:-10}", "--max-steps", "${MAX_STEPS:-160}", "--require-real-data"]
