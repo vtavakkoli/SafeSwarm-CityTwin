@@ -181,6 +181,30 @@ results/publication/visualization/
 results/publication/report.html
 ```
 
+## Top-4 real-city visual demo
+
+After the frozen checkpoints exist, the four leading methods can be replayed side-by-side on identical **real OpenStreetMap-derived city twins**:
+
+```bash
+docker compose up --build demo-top4
+```
+
+The default is San Francisco. Select one or more held-out cities with `DEMO_CITIES`:
+
+```bash
+DEMO_CITIES="San Francisco,Barcelona,Tokyo,Rome" docker compose up --build demo-top4
+```
+
+Or render all eight publication test cities:
+
+```bash
+docker compose up --build demo-top4-all-cities
+```
+
+The comparison covers `H-MAPPO-EARS-Safe`, `EARS-Safe`, `EARS-NP-Safe`, and `AntSwarmSafe`. For every method/city pair the demo creates an animated GIF, a PNG trajectory map, a PNG visit heat map, a PNG final snapshot, detection-event CSV, JSON metrics, and a polished HTML dashboard under `results/demo/top4-real-city/`.
+
+See [`docs/top4-real-city-demo.md`](docs/top4-real-city-demo.md) for configuration and output details. Mission targets shown in the visualizations remain post-evaluation overlays only.
+
 ## Useful v6 outputs
 
 ```text

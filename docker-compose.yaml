@@ -119,6 +119,75 @@ services:
     <<: *benchmark-common
     command: ["python", "experiments/run_publication_pipeline_v7.py", "--offline", "--quick"]
 
+  demo-top4:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/demo_top4_real_city.py
+      - --cities
+      - ${DEMO_CITIES:-San Francisco}
+      - --start-zone
+      - ${DEMO_START_ZONE:-north_east}
+      - --agents
+      - ${AGENTS:-8}
+      - --grid-size
+      - ${GRID_SIZE:-40}
+      - --max-steps
+      - ${MAX_STEPS:-160}
+      - --seed
+      - ${DEMO_SEED:-1042}
+      - --frame-stride
+      - ${DEMO_FRAME_STRIDE:-2}
+      - --fps
+      - ${DEMO_FPS:-8}
+      - --model-dir
+      - results/train/checkpoints
+      - --output-root
+      - results/demo/top4-real-city
+      - --require-real-data
+
+  demo-top4-all-cities:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/demo_top4_real_city.py
+      - --all-test-cities
+      - --start-zone
+      - ${DEMO_START_ZONE:-north_east}
+      - --agents
+      - ${AGENTS:-8}
+      - --grid-size
+      - ${GRID_SIZE:-40}
+      - --max-steps
+      - ${MAX_STEPS:-160}
+      - --seed
+      - ${DEMO_SEED:-1042}
+      - --frame-stride
+      - ${DEMO_FRAME_STRIDE:-2}
+      - --fps
+      - ${DEMO_FPS:-8}
+      - --model-dir
+      - results/train/checkpoints
+      - --output-root
+      - results/demo/top4-real-city
+      - --require-real-data
+
+  demo-top4-offline:
+    <<: *benchmark-common
+    command:
+      - python
+      - experiments/demo_top4_real_city.py
+      - --cities
+      - San Francisco
+      - --start-zone
+      - north_east
+      - --model-dir
+      - results/train/checkpoints
+      - --output-root
+      - results/demo/top4-offline
+      - --offline
+      - --quick
+
   benchmark-real-cities:
     <<: *benchmark-common
     command: ["python", "experiments/run_city_benchmark.py", "--agents", "${AGENTS:-8}", "--grid-size", "${GRID_SIZE:-40}", "--episodes", "${EPISODES:-10}", "--max-steps", "${MAX_STEPS:-160}", "--require-real-data"]
