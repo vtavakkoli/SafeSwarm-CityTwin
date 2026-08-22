@@ -113,6 +113,23 @@ jobs:
           sensitivity = pd.read_csv("results/publication/sensitivity/tables/sensitivity_summary.csv")
           assert int(sensitivity.iloc[0]["random_scenarios"]) > 0
           PY
+      - name: Offline top-4 visualization demo smoke
+        run: |
+          python experiments/demo_top4_real_city.py \
+            --cities "San Francisco" \
+            --offline --quick \
+            --model-dir results/train/checkpoints \
+            --output-root results/demo-ci
+          test -f results/demo-ci/index.html
+          test -f results/demo-ci/san-francisco/index.html
+          test -f results/demo-ci/san-francisco/demo_metrics.csv
+          for strategy in h-mappo-ears-safe ears-safe ears-np-safe antswarmsafe; do
+            test -f "results/demo-ci/san-francisco/${strategy}/animation.gif"
+            test -f "results/demo-ci/san-francisco/${strategy}/trajectory_map.png"
+            test -f "results/demo-ci/san-francisco/${strategy}/visit_heatmap.png"
+            test -f "results/demo-ci/san-francisco/${strategy}/final_snapshot.png"
+            test -f "results/demo-ci/san-francisco/${strategy}/summary.json"
+          done
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -124,4 +141,5 @@ jobs:
             results/test
             results/swap-test
             results/publication
+            results/demo-ci
             results/report.html
