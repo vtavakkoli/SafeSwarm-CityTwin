@@ -34,7 +34,7 @@ from src.training.geography import (  # noqa: E402
     start_zones_for_split,
     validate_protocol,
 )
-from src.training.swap_protocol import seeded_mission_view, swap_seed_series  # noqa: E402
+from src.training.swap_protocol import seeded_mission_view, swap_seed_series, validate_swap_view  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -113,15 +113,10 @@ def main() -> None:
             signature = str(swap_meta["swap_signature"])
             city_signatures = signatures_by_city.setdefault(str(city["name"]), set())
             if args.strict_dataset_gate:
-                problems = []
-                if int(swap_meta["swap_original_target_count"]) < args.min_original_targets:
-                    problems.append("too few original mission targets")
-                if int(swap_meta["swap_target_count"]) < 1:
-                    problems.append("empty alternate mission")
-                if not bool(swap_meta["swap_dataset_changed"]):
-                    problems.append("alternate target set unchanged")
-                if signature in city_signatures:
-                    problems.append("duplicate SWAP target signature")
+                problems = validate_swap_view(
+                    swap_meta, seen_signatures=city_signatures,
+                    min_original_targets=args.min_original_targets,
+                )
                 if problems:
                     raise ValueError(
                         f"SWAP adequacy failure for {city['name']} seed {dataset_seed}: "
