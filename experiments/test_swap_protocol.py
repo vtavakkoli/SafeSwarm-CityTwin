@@ -50,6 +50,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-seed-base", type=int, default=2042)
     parser.add_argument("--dataset-seed-count", type=int, default=3)
     parser.add_argument("--target-fraction", type=float, default=0.72)
+    parser.add_argument("--strict-dataset-gate", action="store_true",
+                        help="Fail publication runs with unchanged, undersized or duplicate SWAP views")
+    parser.add_argument("--min-original-targets", type=int, default=6)
     parser.add_argument("--cache-dir", default="data/cache")
     parser.add_argument("--output-root", default="results/swap-test")
     parser.add_argument("--offline", action="store_true")
@@ -90,6 +93,7 @@ def main() -> None:
     records: list[dict[str, Any]] = []
     dataset_manifest: list[dict[str, Any]] = []
     signatures: set[str] = set()
+    signatures_by_city: dict[str, set[str]] = {}
 
     for city_index, city in enumerate(cities):
         base_layers = load_real_city_layers(
@@ -107,6 +111,24 @@ def main() -> None:
             )
             swap_meta = dict(swap_layers.get("metadata", {}))
             signature = str(swap_meta["swap_signature"])
+            city_signatures = signatures_by_city.setdefault(str(city["name"]), set())
+            if args.strict_dataset_gate:
+                problems = []
+                if int(swap_meta["swap_original_target_count"]) < args.min_original_targets:
+                    problems.append("too few original mission targets")
+                if int(swap_meta["swap_target_count"]) < 1:
+                    problems.append("empty alternate mission")
+                if not bool(swap_meta["swap_dataset_changed"]):
+                    problems.append("alternate target set unchanged")
+                if signature in city_signatures:
+                    problems.append("duplicate SWAP target signature")
+                if problems:
+                    raise ValueError(
+                        f"SWAP adequacy failure for {city['name']} seed {dataset_seed}: "
+                        + ", ".join(problems)
+                        + ". Fix input quality or pre-register an exclusion; do not silently replace targets."
+                    )
+            city_signatures.add(signature)
             signatures.add(f"{city['name']}:{signature}")
             dataset_manifest.append(
                 {
@@ -203,6 +225,8 @@ def main() -> None:
         "physical_city_geometry": "cached OSM geometry fixed per city",
         "dataset_change": "priority-stratified hidden mission target subset changes by SWAP seed",
         "dataset_changed_pass": dataset_changed_pass,
+        "strict_dataset_gate": bool(args.strict_dataset_gate),
+        "min_original_targets": int(args.min_original_targets),
         "unique_dataset_views": int(len(signatures)),
         "expected_dataset_views": int(expected_views),
         "unique_signatures_pass": bool(len(signatures) == expected_views),
