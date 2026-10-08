@@ -9,7 +9,7 @@ import pytest
 from experiments.benchmark_ears_v8 import _paired_statistics, topology_metrics
 from src.agents.ears_v8 import EARSTopoSafePolicy, TopologyGateConfig
 from src.environment.city_twin import CityTwinEnvironment
-from src.training.swap_protocol import seeded_mission_view
+from src.training.swap_protocol import seeded_mission_view, validate_swap_view
 
 
 def layers(*, wall: bool = False, n_targets: int = 3):
@@ -93,6 +93,20 @@ def test_swap_quality_manifest_records_one_target_degeneracy():
     one = layers(n_targets=1)
     swap = seeded_mission_view(one, 2042)
     assert swap["metadata"]["swap_dataset_changed"] is False
+
+
+def test_strict_swap_quality_rejects_degenerate_and_duplicate_views():
+    swap = seeded_mission_view(layers(n_targets=1), 2042)
+    metadata = swap["metadata"]
+    problems = validate_swap_view(metadata, min_original_targets=6)
+    assert "too few original mission targets" in problems
+    assert "alternate target set unchanged" in problems
+    duplicate = validate_swap_view(
+        metadata, min_original_targets=1,
+        seen_signatures={metadata["swap_signature"]},
+    )
+    assert "duplicate SWAP target signature" in duplicate
+
 
 
 def test_city_block_permutation_distinguishes_episode_counts():
