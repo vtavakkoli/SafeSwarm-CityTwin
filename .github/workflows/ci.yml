@@ -113,6 +113,14 @@ jobs:
           sensitivity = pd.read_csv("results/publication/sensitivity/tables/sensitivity_summary.csv")
           assert int(sensitivity.iloc[0]["random_scenarios"]) > 0
           PY
+      - name: Offline v8 route-aware benchmark and evidence gate
+        run: |
+          python experiments/benchmark_ears_v8.py --offline --quick --output-root results/v8/ci
+          python experiments/validate_publication_v8.py --output-root results/v8/ci
+          test -f results/v8/ci/episodes.csv
+          test -f results/v8/ci/paired_city_tests.csv
+          test -f results/v8/ci/topology.csv
+          test -f results/v8/ci/index.html
       - name: Offline top-4 visualization demo smoke
         run: |
           python experiments/demo_top4_real_city.py \
@@ -142,4 +150,5 @@ jobs:
             results/swap-test
             results/publication
             results/demo-ci
+            results/v8/ci
             results/report.html

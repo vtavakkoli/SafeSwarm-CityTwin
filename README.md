@@ -226,6 +226,22 @@ results/report.html
 
 The v7 publication report adds an evidence gate, not a model-selection gate. Strong publication support requires consistent multi-city/SWAP behavior, paired and hierarchical confidence intervals, raw-metric agreement with the proposed mechanism, mechanism ablations, and score-weight robustness. The repository never forces EARS, PRISM, MAPPO, or any other method to win.
 
+## Experimental v8 topology-aware EARS (separate from published v7)
+
+A new route-aware controller and a gated variant have been added without
+modifying the v6/v7 algorithms or their selection checkpoints. The v8 benchmark
+compares AntSwarmSafe, original EARS, route-only EARS, and gated EARS on matched
+city episodes; it produces city-aware uncertainty, topology diagnostics,
+scalability and communication-dropout sweeps, and a fail-closed evidence report.
+
+**Development prototype, not an established performance improvement.** The
+existing eight-city results are development/diagnostic data for v8; a new
+six-city confirmation protocol must be frozen and run before updating paper
+performance claims.
+
+See [docs/EARS_V8.md](docs/EARS_V8.md) for all commands, integrity gates, and
+limitations.
+
 ## License and data
 
 Repository code is licensed under the project license. Real geographic snapshots are derived from OpenStreetMap and must retain **© OpenStreetMap contributors** attribution and applicable ODbL terms. Synthetic mode exists for deterministic CI/development and must not be presented as real-world evidence.

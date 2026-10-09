@@ -1,0 +1,46 @@
+name: EARS v8 isolated verification
+
+on:
+  push:
+    branches: ["feat/ears-v8-topology-evidence"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  v8-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Focused unit tests
+        run: pytest -q tests/test_ears_v8.py
+      - name: Synthetic v8 integration with smoke-only default checkpoint
+        run: |
+          python - <<'PY'
+          from src.agents.ears_v6 import EARSPolicy
+          EARSPolicy().save_checkpoint(
+              "results/train/checkpoints/ears_safe.json",
+              metadata={"purpose": "CI smoke only - not trained or publication evidence"}
+          )
+          PY
+          python experiments/benchmark_ears_v8.py \
+            --offline --quick --output-root results/v8/smoke
+          python experiments/validate_publication_v8.py \
+            --output-root results/v8/smoke
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ears-v8-smoke
+          path: results/v8/smoke/
+          if-no-files-found: ignore

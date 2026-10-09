@@ -108,6 +108,29 @@ def seeded_mission_view(
     return result
 
 
+def validate_swap_view(
+    metadata: Mapping[str, Any],
+    *,
+    seen_signatures: set[str] | None = None,
+    min_original_targets: int = 6,
+) -> list[str]:
+    """Return publication-quality problems without changing the dataset.
+
+    The caller decides whether to fail closed (publication) or merely log
+    diagnostics (development). This must run before comparing policies.
+    """
+    problems: list[str] = []
+    if int(metadata.get("swap_original_target_count", 0)) < min_original_targets:
+        problems.append("too few original mission targets")
+    if int(metadata.get("swap_target_count", 0)) < 1:
+        problems.append("empty alternate mission")
+    if not bool(metadata.get("swap_dataset_changed", False)):
+        problems.append("alternate target set unchanged")
+    if seen_signatures is not None and str(metadata.get("swap_signature", "")) in seen_signatures:
+        problems.append("duplicate SWAP target signature")
+    return problems
+
+
 def swap_seed_series(base_seed: int = 2042, count: int = 3) -> list[int]:
     """Return well-separated deterministic dataset seeds."""
 
