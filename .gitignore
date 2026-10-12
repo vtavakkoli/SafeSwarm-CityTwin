@@ -14,3 +14,4 @@ data/cache/*.json
 results/real_city_benchmark/
 results/single_city_benchmark/
 results/quick-*/
+results/v9/

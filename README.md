@@ -242,6 +242,23 @@ performance claims.
 See [docs/EARS_V8.md](docs/EARS_V8.md) for all commands, integrity gates, and
 limitations.
 
+## Experimental v9 information routing
+
+v9 adds sensor-footprint information gain, persistent goal reservations, cached
+graph routes and retry backoff. Its validation-only selection compares four
+predefined candidates against unchanged v7 and Ant, and retains v7 if no candidate
+meets the declared score, discovery, safety and runtime gates. A large performance
+improvement is not assumed. Historical v7/v8 code and results remain unchanged.
+
+```bash
+docker compose run --rm --build ears-v9-select
+```
+
+Results are saved under a new `results/v9/select-<timestamp>/` directory. The
+runner prints the exact path and flushes raw episodes as they finish. See
+[docs/EARS_V9.md](docs/EARS_V9.md) for the full-grid diagnosis, explicit output
+paths, frozen-model evaluation commands and evidence limitations.
+
 ## License and data
 
 Repository code is licensed under the project license. Real geographic snapshots are derived from OpenStreetMap and must retain **© OpenStreetMap contributors** attribution and applicable ODbL terms. Synthetic mode exists for deterministic CI/development and must not be presented as real-world evidence.

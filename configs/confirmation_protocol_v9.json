@@ -1,0 +1,104 @@
+{
+  "protocol_version": "9.0-confirmation-reserved",
+  "description": "Reserved geography for a frozen v9 selection. Never use these cities for candidate selection. If already inspected in another run, these are no longer untouched confirmation cities.",
+  "cities": [
+    {
+      "name": "Vienna",
+      "place": "Vienna, Austria",
+      "radius_m": 1400,
+      "split": "train"
+    },
+    {
+      "name": "London",
+      "place": "London, United Kingdom",
+      "radius_m": 1400,
+      "split": "train"
+    },
+    {
+      "name": "Berlin",
+      "place": "Berlin, Germany",
+      "radius_m": 1400,
+      "split": "train"
+    },
+    {
+      "name": "Amsterdam",
+      "place": "Amsterdam, Netherlands",
+      "radius_m": 1400,
+      "split": "validation"
+    },
+    {
+      "name": "Prague",
+      "place": "Prague, Czechia",
+      "radius_m": 1400,
+      "split": "validation"
+    },
+    {
+      "name": "Zurich",
+      "place": "Zurich, Switzerland",
+      "radius_m": 1400,
+      "split": "test"
+    },
+    {
+      "name": "Madrid",
+      "place": "Madrid, Spain",
+      "radius_m": 1400,
+      "split": "test"
+    },
+    {
+      "name": "Lisbon",
+      "place": "Lisbon, Portugal",
+      "radius_m": 1400,
+      "split": "test"
+    },
+    {
+      "name": "Stockholm",
+      "place": "Stockholm, Sweden",
+      "radius_m": 1400,
+      "split": "test"
+    },
+    {
+      "name": "Helsinki",
+      "place": "Helsinki, Finland",
+      "radius_m": 1400,
+      "split": "test"
+    },
+    {
+      "name": "Copenhagen",
+      "place": "Copenhagen, Denmark",
+      "radius_m": 1400,
+      "split": "test"
+    }
+  ],
+  "start_zones": {
+    "train": [
+      "north_west",
+      "south_east",
+      "center"
+    ],
+    "validation": [
+      "west",
+      "east",
+      "north",
+      "south"
+    ],
+    "test": [
+      "north_east",
+      "south_west"
+    ]
+  },
+  "locked_evaluation": {
+    "selection_permitted": false,
+    "selection_artifact": "selected_model.json from benchmark_ears_v9.py --mode select",
+    "primary_metric": "city-mean operational score",
+    "baseline": "EARS-Safe-v7",
+    "secondary_baseline": "AntSwarmSafe",
+    "candidate": "frozen selected_method, including v7 fallback",
+    "threshold_selection": "validation only",
+    "analysis": "paired city sign-flipping; per-setting p-values are exploratory and unadjusted"
+  },
+  "data_quality": {
+    "min_mission_targets": 6,
+    "min_reachable_mission_fraction": 1,
+    "require_openstreetmap": true
+  }
+}
