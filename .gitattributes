@@ -1,0 +1,2 @@
+# Historical evidence hashes refer to exact uploaded bytes, including newlines.
+evidence/** -text

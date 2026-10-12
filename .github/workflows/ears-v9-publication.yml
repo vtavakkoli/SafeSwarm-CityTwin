@@ -1,0 +1,17 @@
+name: EARS v9 publication workflow
+on: [push, pull_request]
+jobs:
+  publication-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q tests/test_publication_v9.py tests/test_ears_v9.py tests/test_benchmark_ears_v9.py
+      - run: python experiments/publication_ears_v9.py smoke --offline --output-root results/publication-v9-ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-publication-smoke
+          path: results/publication-v9-ci

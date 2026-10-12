@@ -1,5 +1,20 @@
 # SafeSwarm-CityTwin
 
+## v9 final research workflow
+
+See [the publication guide](docs/EARS_V9_PUBLICATION.md) for standalone controller
+training, frozen/resumable evaluation, ablation, fixed-budget and SWAP panels,
+and automatically generated PDF/HTML/Markdown reports with statistical tests.
+The original validation retained v7; Info-v9 remains a research candidate whose
+independent confirmation is pending. All original validation evidence is retained.
+
+```bash
+docker compose run --rm --build ears-v9-publication
+```
+
+This continues from `results/train/checkpoints/ears_safe.json` and saves the
+complete study to `results/publication-v9/`. See the guide before training anew.
+
 A reproducible research benchmark for **safety-constrained multi-agent urban search** on cached real OpenStreetMap city snapshots. SafeSwarm separates training, robust validation, primary held-out testing, and post-selection SWAP stress testing. Primary policies obey an observable-only action contract.
 
 ## v6: EARS — improve Ant without destroying what makes Ant strong
