@@ -259,6 +259,7 @@ def _download_osm_layers(place_name: str, grid_size: int, radius_m: int, seed: i
             _nearest_walkable((0, 0), grid_size, obstacles, restricted),
             _nearest_walkable((grid_size - 1, grid_size - 1), grid_size, obstacles, restricted),
         }
+    mission_source = "openstreetmap" if mission else "synthetic_fallback"
     if not mission:
         synth = synthetic_city_layers(grid_size, seed, place_name)
         mission = synth["mission_zones"]
@@ -272,6 +273,7 @@ def _download_osm_layers(place_name: str, grid_size: int, radius_m: int, seed: i
         "priority_cells": priority,
         "metadata": {
             "source": "openstreetmap",
+            "mission_source": mission_source,
             "place_name": place_name,
             "center_lat": float(center[0]),
             "center_lon": float(center[1]),

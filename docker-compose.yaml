@@ -209,3 +209,23 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     command: ["pytest", "-q"]
+
+  ears-v9-train:
+    <<: *benchmark-common
+    command: ["python", "experiments/publication_ears_v9.py", "train", "--output-root", "${EARS_PUBLICATION_ROOT:-results/publication-v9}"]
+
+  ears-v9-publication:
+    <<: *benchmark-common
+    environment:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    command: ["python", "experiments/publication_ears_v9.py", "all", "--output-root", "${EARS_PUBLICATION_ROOT:-results/publication-v9}", "--checkpoint", "${EARS_CHECKPOINT:-results/train/checkpoints/ears_safe.json}"]
+
+  ears-v9-report:
+    <<: *benchmark-common
+    command: ["python", "experiments/publication_ears_v9.py", "report", "--output-root", "${EARS_PUBLICATION_ROOT:-results/publication-v9}"]
+
+  ears-v9-publication-smoke:
+    <<: *benchmark-common
+    command: ["python", "experiments/publication_ears_v9.py", "smoke", "--offline", "--output-root", "results/publication-v9-smoke"]
