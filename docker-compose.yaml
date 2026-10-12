@@ -119,6 +119,14 @@ services:
     <<: *benchmark-common
     command: ["python", "experiments/run_publication_pipeline_v7.py", "--offline", "--quick"]
 
+  ears-v9-select:
+    <<: *benchmark-common
+    command: ["python", "experiments/benchmark_ears_v9.py", "--mode", "select", "--require-real-data"]
+
+  ears-v9-smoke:
+    <<: *benchmark-common
+    command: ["python", "experiments/benchmark_ears_v9.py", "--mode", "smoke", "--offline", "--agents-grid", "4,16", "--dropout-grid", "0,0.30", "--grid-size", "16", "--max-steps", "40", "--episodes", "2"]
+
   demo-top4:
     <<: *benchmark-common
     command:
