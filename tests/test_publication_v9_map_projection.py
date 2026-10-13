@@ -1,6 +1,9 @@
 """Synthetic-fixture tests for publication v9 OSM target-cell projection."""
 
 from copy import deepcopy
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -54,3 +57,18 @@ def test_connected_targets_are_unchanged():
     assert projected["mission_zones"] == original["mission_zones"]
     assert projected["priority_cells"] == original["priority_cells"]
     assert audit["modified_targets"] == 0
+
+
+def test_map_preparation_runs_as_direct_script():
+    """Regression: Docker Compose invokes this path directly, not as -m."""
+    root = Path(__file__).resolve().parents[1]
+    script = root / "experiments" / "prepare_publication_v9_maps.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--max-shift" in result.stdout
