@@ -12,7 +12,7 @@ fresh OSM snapshot does not itself repair the raster topology.
 
 ## Versioned, auditable map preprocessing (new study only)
 
-The explicit \`prepare_publication_v9_maps.py\` tool finds cells reachable
+The explicit `prepare_publication_v9_maps.py` tool finds cells reachable
 from each test start zone, intersects the reachable sets and projects
 isolated OSM POI *grid representations* onto the nearest unique free cells in
 the common reachable area. It preserves each original POI priority and target
@@ -30,7 +30,7 @@ also frozen by the publication pipeline.
 Run from the repository root after reviewing the methodology and before
 looking at any confirmation performance:
 
-\`\`\`bash
+```bash
 # Download original, strictly OSM-derived geographical snapshots.
 docker compose run --rm --build prepare-data python experiments/prepare_real_city_data.py --protocol configs/confirmation_protocol_v9.json --grid-size 40 --force-refresh --require-real-data
 
@@ -39,22 +39,22 @@ docker compose run --rm --build ears-v9-publication python experiments/prepare_p
 
 # Run a NEW immutable study with the existing historical EARS checkpoint.
 docker compose run --rm --build ears-v9-publication python experiments/publication_ears_v9.py all --offline --cache-dir data/cache/v9-projected-v1 --output-root results/publication-v9-projected-v1
-\`\`\`
+```
 
 Result locations:
 
-- \`results/publication-v9-map-amendment/audit.json\`: every OSM mission-cell shift and source hash.
-- \`data/cache/v9-projected-v1/\`: distinct versioned preprocessed city snapshots.
-- \`results/publication-v9-projected-v1/frozen/\`: code, checkpoint, protocol and final map hashes.
-- \`results/publication-v9-projected-v1/report/report.pdf\`: publication PDF if evaluation completes.
-- \`results/publication-v9-projected-v1/report/index.html\`: HTML report.
-- \`results/publication-v9-projected-v1/episodes.csv\`: all raw, matched episodes.
+- `results/publication-v9-map-amendment/audit.json`: every OSM mission-cell shift and source hash.
+- `data/cache/v9-projected-v1/`: distinct versioned preprocessed city snapshots.
+- `results/publication-v9-projected-v1/frozen/`: code, checkpoint, protocol and final map hashes.
+- `results/publication-v9-projected-v1/report/report.pdf`: publication PDF if evaluation completes.
+- `results/publication-v9-projected-v1/report/index.html`: HTML report.
+- `results/publication-v9-projected-v1/episodes.csv`: all raw, matched episodes.
 
 Check tests:
 
-\`\`\`bash
+```bash
 docker compose run --rm --build unit-test
-\`\`\`
+```
 
 If the projection fails because it exceeds the allowed distance, **do not
 silently drop a target**, remove a barrier, or retune its distance threshold
