@@ -98,3 +98,36 @@ the restricted/obstacle masks and the original OSM POIs. Do **not** silently
 adopt the measured maximum as the new default or call the resulting study
 unmodified, independent confirmation evidence. Prespecify and justify a
 new geographic protocol before creating any amended maps or collecting results.
+
+
+## Missing OSM cache in read-only preflight (e.g. Copenhagen)
+
+Before this fix, `--audit-only` aborted with `FileNotFoundError` when the
+last city had no original 40x40 OSM cache; earlier city diagnostics were lost.
+It now records a `missing_osm_cache`/ `invalid_osm_source` entry and writes
+the whole audit. Missing cities are explicitly counted and the overall
+`all_within_requested_limit` stays **false**. No synthetic fallback is
+accepted as real OSM evidence.
+
+To download **only absent** original OSM snapshots (internet access required)
+and inspect every city's required displacement:
+
+```bash
+git pull --ff-only
+docker compose run --rm --build ears-v9-publication python -m experiments.prepare_publication_v9_maps --audit-only --fetch-missing --max-shift 3 --audit-path results/publication-v9-map-amendment/preflight-with-copenhagen.json
+```
+
+Without `--fetch-missing`, `--audit-only` is purely read-only. With that
+flag it may create a **raw** OSM city cache, but it never writes an amended
+or derived map and never refreshes or overwrites an existing cache. Provenance
+is checked; if fetching fails and OSM returns synthetic fallback, the audit
+reports that city as `invalid_osm_source`. Existing source caches are left
+unmodified in either case.
+
+Do not treat a report with missing OSM caches as a six-city success.
+In the observed run, Lisbon requires up to **seven grid cells** of
+target relocation (seven candidate moves; four exceed the fixed three-cell
+limit). That is a substantive geographic-methodology issue, not a cache
+error. Complete the six-city audit and review those displacements before
+running a *new, explicitly amended* publication study. This patch does not
+raise the limit, remove targets or change the frozen quality gate.

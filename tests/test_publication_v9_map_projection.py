@@ -113,3 +113,91 @@ def test_audit_only_reports_full_shift_without_modifying_maps(tmp_path):
     assert report["cities"][0]["over_limit"]
     assert cache_file.read_bytes() == original_bytes
     assert not projected.exists()
+
+
+def test_preflight_records_missing_city_and_keeps_other_diagnostics(tmp_path):
+    """A missing sixth city must not discard the preceding five city checks."""
+    from src.environment.obstacles import _cache_path, save_layer_cache
+
+    root = Path(__file__).resolve().parents[1]
+    raw = tmp_path / "raw"
+    derived = tmp_path / "derived"
+    report_path = tmp_path / "complete_preflight.json"
+    existing = "Existing, OSM"
+    cache_file = _cache_path(raw, existing, 9, 1400)
+    save_layer_cache(cache_file, isolated_poi_fixture())
+    original = cache_file.read_bytes()
+
+    protocol = tmp_path / "protocol.json"
+    protocol.write_text(json.dumps({
+        "cities": [
+            {"name": "Existing", "place": existing, "split": "test"},
+            {"name": "Copenhagen", "place": "Copenhagen, Denmark", "split": "test"},
+        ],
+        "start_zones": {"test": ["north_east", "south_west"]},
+    }), encoding="utf-8")
+    command = [
+        sys.executable, "-m", "experiments.prepare_publication_v9_maps",
+        "--protocol", str(protocol),
+        "--grid-size", "9",
+        "--source-cache-dir", str(raw),
+        "--output-cache-dir", str(derived),
+        "--audit-path", str(report_path),
+        "--max-shift", "3",
+        "--audit-only",
+    ]
+    result = subprocess.run(command, cwd=root, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert len(report["cities"]) == 2
+    assert report["cities_expected"] == 2
+    assert report["cities_with_valid_osm"] == 1
+    assert not report["all_source_cities_available"]
+    assert not report["all_within_requested_limit"]
+    assert report["cities"][0]["city"] == "Existing"
+    assert report["cities"][1]["city"] == "Copenhagen"
+    assert report["cities"][1]["status"] == "missing_osm_cache"
+    assert "--fetch-missing" in report["cities"][1]["error"]
+    assert cache_file.read_bytes() == original
+    assert not derived.exists()
+
+
+def test_missing_osm_can_be_fetched_without_refreshing_existing_cache(tmp_path, monkeypatch):
+    """Explicit fetch permits new verified snapshots, but never synthetic ones."""
+    from experiments import prepare_publication_v9_maps as prep
+    from src.environment.obstacles import _cache_path, save_layer_cache
+
+    city = {"name": "Copenhagen", "place": "Copenhagen, Denmark", "radius_m": 1400}
+    expected = _cache_path(tmp_path, city["place"], 9, 1400)
+    calls = []
+
+    def fake_loader(place, grid, *, radius_m, cache_dir, allow_network):
+        calls.append(allow_network)
+        assert place == city["place"]
+        if allow_network and not expected.exists():
+            save_layer_cache(expected, isolated_poi_fixture())
+        return prep.load_layer_cache(expected)
+
+    monkeypatch.setattr(prep, "load_real_city_layers", fake_loader)
+    with pytest.raises(FileNotFoundError, match="--fetch-missing"):
+        prep.load_verified_source(city, 9, tmp_path, fetch_missing=False)
+    layers, path = prep.load_verified_source(city, 9, tmp_path, fetch_missing=True)
+    assert path == expected
+    assert layers["metadata"]["source"] == "openstreetmap"
+    assert calls == [True]
+    prep.load_verified_source(city, 9, tmp_path, fetch_missing=False)
+    assert calls == [True, False]
+
+
+def test_fetch_missing_rejects_synthetic_fallback(tmp_path, monkeypatch):
+    from experiments import prepare_publication_v9_maps as prep
+
+    city = {"name": "Copenhagen", "place": "Copenhagen, Denmark"}
+    def synthetic(*a, **kw):
+        return {"metadata": {
+            "source": "synthetic", "mission_source": "synthetic_fallback",
+            "fallback_reason": "Overpass unavailable",
+        }}
+    monkeypatch.setattr(prep, "load_real_city_layers", synthetic)
+    with pytest.raises(ValueError, match="No synthetic fallback"):
+        prep.load_verified_source(city, 9, tmp_path, fetch_missing=True)
