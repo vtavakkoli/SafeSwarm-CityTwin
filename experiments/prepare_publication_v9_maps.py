@@ -12,6 +12,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # Direct execution (python experiments/prepare_publication_v9_maps.py) places
 # experiments/ rather than the repository root on sys.path. Match the other
@@ -25,6 +26,35 @@ from src.environment.obstacles import _cache_path, load_layer_cache, load_real_c
 from src.training.geography import apply_start_zone, load_protocol, select_cities
 
 METHOD = "publication-v9-accessible-osm-poi-grid-projection-v1"
+
+
+def configure_overpass_endpoint(endpoint: str | None) -> None:
+    """Apply an explicit OSMnx 2.x Overpass API base URL.
+
+    No extra network requests are made. OSMnx adds /interpreter itself.
+    This affects only newly downloaded, missing source snapshots.
+    """
+    if endpoint is None:
+        return
+    parts = urlsplit(endpoint)
+    if (
+        parts.scheme != "https"
+        or not parts.hostname
+        or parts.username is not None
+        or parts.password is not None
+        or parts.query
+        or parts.fragment
+        or not parts.path.rstrip("/").endswith("/api")
+    ):
+        raise ValueError(
+            "--overpass-url must be an HTTPS Overpass base URL ending in "
+            "'/api' (NOT '/api/interpreter'), with no credentials or query."
+        )
+    import osmnx as ox
+
+    ox.settings.overpass_url = endpoint.rstrip("/")
+
+
 
 
 def load_verified_source(city: dict, grid: int, source: Path, *, fetch_missing: bool) -> tuple[dict, Path]:
@@ -183,6 +213,14 @@ def parse_args() -> argparse.Namespace:
         "--fetch-missing", action="store_true",
         help="Download ONLY absent original OSM snapshots; reject synthetic fallback",
     )
+    p.add_argument(
+        "--overpass-url",
+        help=(
+            "Optional HTTPS Overpass API base URL ending in /api "
+            "(e.g. https://overpass.private.coffee/api); "
+            "used only when --fetch-missing retrieves an absent source cache"
+        ),
+    )
     return p.parse_args()
 
 
@@ -194,7 +232,13 @@ def main() -> None:
         raise ValueError("Input and output caches must be separate")
     audit_path = Path(args.audit_path)
     if audit_path.exists():
-        raise FileExistsError(f"Refusing to overwrite existing amendment audit: {audit_path}")
+        raise FileExistsError(
+            f"Refusing to overwrite existing amendment audit: {audit_path}. "
+            "Specify a NEW --audit-path to preserve the previous report."
+        )
+    if args.overpass_url and not args.fetch_missing:
+        raise ValueError("--overpass-url requires --fetch-missing")
+    configure_overpass_endpoint(args.overpass_url)
 
     protocol = load_protocol(args.protocol)
     zones = list(protocol["start_zones"]["test"])
@@ -207,6 +251,8 @@ def main() -> None:
         "grid_size": args.grid_size,
         "zones": zones,
         "max_shift_grid_cells": args.max_shift,
+        "fetch_missing_sources": bool(args.fetch_missing),
+        "overpass_url_override": args.overpass_url,
         "cities": [],
     }
 
