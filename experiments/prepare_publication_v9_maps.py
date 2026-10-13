@@ -27,6 +27,42 @@ from src.training.geography import apply_start_zone, load_protocol, select_citie
 METHOD = "publication-v9-accessible-osm-poi-grid-projection-v1"
 
 
+def load_verified_source(city: dict, grid: int, source: Path, *, fetch_missing: bool) -> tuple[dict, Path]:
+    """Use only original real OSM snapshots; optionally retrieve missing ones.
+
+    Existing caches are never refreshed or overwritten by this entrypoint.
+    In particular, a failed request's synthetic fallback is never accepted.
+    """
+    radius = int(city.get("radius_m", 1400))
+    path = _cache_path(source, city["place"], grid, radius)
+    if not path.is_file() and not fetch_missing:
+        raise FileNotFoundError(
+            f"Missing raw OSM city cache: {path}. "
+            "Re-run with --fetch-missing to download only absent OSM snapshots."
+        )
+
+    layers = load_real_city_layers(
+        city["place"], grid, radius_m=radius, cache_dir=source,
+        allow_network=fetch_missing,
+    )
+    metadata = layers.get("metadata", {})
+    if metadata.get("source") != "openstreetmap" or metadata.get("mission_source") != "openstreetmap":
+        raise ValueError(
+            f"{city['name']}: verified OSM geography and missions required; "
+            f"source={metadata.get('source')!r}, "
+            f"mission_source={metadata.get('mission_source')!r}, "
+            f"reason={metadata.get('fallback_reason', 'unknown')}. "
+            "No synthetic fallback is valid publication data."
+        )
+    if metadata.get("target_projection_method"):
+        raise ValueError(f"{city['name']}: source must be raw, not an already amended map")
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"{city['name']}: verified OSM loader returned data but did not create cache: {path}"
+        )
+    return layers, path
+
+
 def reachable_from_bases(layers: dict, grid: int) -> set[tuple[int, int]]:
     blocked = set(layers["obstacles"]) | set(layers["restricted_zones"])
     reachable: set[tuple[int, int]] = set()
@@ -143,6 +179,10 @@ def parse_args() -> argparse.Namespace:
         "--audit-only", action="store_true",
         help="Inspect required shifts for ALL test cities without writing modified maps",
     )
+    p.add_argument(
+        "--fetch-missing", action="store_true",
+        help="Download ONLY absent original OSM snapshots; reject synthetic fallback",
+    )
     return p.parse_args()
 
 
@@ -173,18 +213,25 @@ def main() -> None:
     # Validate every source city and all proposed targets before any write.
     for city in cities:
         radius = int(city.get("radius_m", 1400))
-        original_path = _cache_path(source, city["place"], args.grid_size, radius)
-        if not original_path.is_file():
-            raise FileNotFoundError(f"Missing raw OSM city cache: {original_path}")
-        layers = load_real_city_layers(
-            city["place"], args.grid_size, radius_m=radius,
-            cache_dir=source, allow_network=False,
-        )
-        metadata = layers["metadata"]
-        if metadata.get("source") != "openstreetmap" or metadata.get("mission_source") != "openstreetmap":
-            raise ValueError(f"{city['name']}: actual OSM geography and missions required")
-        if metadata.get("target_projection_method"):
-            raise ValueError(f"{city['name']}: source must be raw, not an already amended map")
+        expected_path = _cache_path(source, city["place"], args.grid_size, radius)
+        try:
+            layers, original_path = load_verified_source(
+                city, args.grid_size, source, fetch_missing=args.fetch_missing,
+            )
+        except (FileNotFoundError, ValueError, OSError, RuntimeError) as exc:
+            if not args.audit_only:
+                raise
+            status = "missing_osm_cache" if isinstance(exc, FileNotFoundError) else "invalid_osm_source"
+            audit = {
+                "city": city["name"],
+                "source_path": str(expected_path),
+                "status": status,
+                "error": str(exc),
+                "within_requested_limit": False,
+            }
+            report["cities"].append(audit)
+            print(f"{city['name']}: {status}: {exc}", flush=True)
+            continue
         if args.audit_only:
             # Manhattan distance in a grid cannot exceed 2 * (grid_size - 1).
             # Use this mathematical maximum ONLY for read-only inspection,
@@ -246,21 +293,41 @@ def main() -> None:
 
     if args.audit_only:
         report["status"] = "preflight_only"
-        report["all_within_requested_limit"] = all(
-            city["within_requested_limit"] for city in report["cities"]
+        report["source_cache_writes_enabled"] = bool(args.fetch_missing)
+        report["derived_maps_written"] = False
+        report["cities_expected"] = len(cities)
+        report["cities_with_valid_osm"] = sum(
+            city["status"] in ("within_limit", "exceeds_limit")
+            for city in report["cities"]
+        )
+        report["all_source_cities_available"] = (
+            report["cities_with_valid_osm"] == report["cities_expected"]
+        )
+        report["all_within_requested_limit"] = (
+            report["all_source_cities_available"]
+            and all(city["within_requested_limit"] for city in report["cities"])
         )
         report["meaning"] = (
-            "No derived maps created; this preflight does NOT authorize increasing "
-            "the relocation threshold or imply original confirmation data."
+            "No derived maps created; --fetch-missing (if enabled) may download "
+            "original OSM snapshots only. This preflight does NOT authorize "
+            "increasing the relocation threshold or imply original confirmation data."
         )
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         audit_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
         print(f"Full six-city audit: {audit_path}", flush=True)
-        print(
-            "All within configured limit" if report["all_within_requested_limit"]
-            else "At least one city exceeds the limit; review the audit BEFORE making a protocol amendment",
-            flush=True,
-        )
+        if not report["all_source_cities_available"]:
+            print(
+                "INCOMPLETE: one or more verified OSM city caches are missing/invalid. "
+                "Use --fetch-missing with network access, then run a NEW preflight audit.",
+                flush=True,
+            )
+        elif not report["all_within_requested_limit"]:
+            print(
+                "At least one city exceeds the limit; review the audit BEFORE making a protocol amendment",
+                flush=True,
+            )
+        else:
+            print("All cities within configured limit", flush=True)
         return
 
     for path, amended in staged:
