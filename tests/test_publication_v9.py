@@ -37,6 +37,8 @@ def test_holm_and_small_city_exact_resolution():
     assert np.allclose(reporting.holm([0.01, 0.04, 0.03]), [0.03, 0.06, 0.06])
     assert reporting.city_test([0.1] * 6)["p_two_sided"] == 2 / 64
     assert reporting.city_test([0.0] * 6)["p_two_sided"] == 1
+    # With five independent cities, an exact two-sided test cannot reach alpha=0.05.
+    assert reporting.city_test([0.1] * 5)["p_two_sided"] == 2 / 32
 
 
 def test_real_data_gate_rejects_legacy_and_synthetic_targets(monkeypatch):
@@ -200,3 +202,71 @@ def test_dependency_change_blocks_evaluation(tmp_path, monkeypatch):
     monkeypatch.setattr(study, "software", lambda: {"python": "changed"})
     with pytest.raises(ValueError, match="Dependencies changed"):
         study.evaluate(args(tmp_path))
+
+
+def test_explicit_five_city_exploratory_plan_keeps_all_panels_and_model_pairing():
+    spec = study.study_spec(exclude_cities="Copenhagen")
+    assert spec["exploratory_subset"]
+    assert not spec["original_six_city_confirmation"]
+    assert spec["excluded_cities"] == ["Copenhagen"]
+    assert [city["name"] for city in spec["cities"]] == [
+        "Zurich", "Madrid", "Lisbon", "Stockholm", "Helsinki"
+    ]
+    jobs = list(study.jobs(spec))
+    assert len(jobs) == 14000
+    f = pd.DataFrame(jobs)
+    assert f.groupby("panel").size().to_dict() == {
+        "fixed_budget": 6400, "mission_stop": 6400, "swap": 1200,
+    }
+    pairs = [k for k in study.KEYS if k != "strategy"]
+    assert (f.groupby(pairs).strategy.nunique() == 4).all()
+    assert (f.groupby(pairs).seed.nunique() == 1).all()
+
+    # In contrast, the original six-city protocol is unchanged.
+    assert not study.study_spec()["exploratory_subset"]
+    assert len(list(study.jobs(study.study_spec()))) == 16800
+
+
+@pytest.mark.parametrize("excluded", ["Vienna", "Zurich,Madrid,Lisbon,Stockholm,Helsinki,Copenhagen"])
+def test_invalid_city_selection_fails_closed(excluded):
+    with pytest.raises(ValueError, match="Unknown excluded|at least two"):
+        study.study_spec(exclude_cities=excluded)
+
+
+def test_cannot_exclude_cities_in_smoke_fixture():
+    with pytest.raises(ValueError, match="smoke"):
+        study.study_spec(smoke=True, exclude_cities="Copenhagen")
+
+
+def test_excluded_city_freeze_is_separate_and_nonconfirmatory(tmp_path, monkeypatch):
+    """The new frozen protocol hashes only the opted-in cities."""
+    original_real_layers = study.real_layers
+    monkeypatch.setattr(
+        study,
+        "real_layers",
+        lambda city, grid, cache, offline: study.synthetic_city_layers(
+            grid, seed=37, place_name=city["place"]
+        ),
+    )
+    monkeypatch.setattr(
+        study,
+        "quality_check",
+        lambda layers, grid, zone: study.topology_metrics(
+            study.apply_start_zone(layers, grid, zone), grid
+        ),
+    )
+    checkpoint = tmp_path / "checkpoint.json"
+    study.EARSPolicy().save_checkpoint(checkpoint)
+    a = args(tmp_path)
+    a.checkpoint = str(checkpoint)
+    a.exclude_cities = "Copenhagen"
+    spec = study.freeze(a)
+    assert spec["exploratory_subset"]
+    assert len(spec["maps"]) == 5
+    assert spec["expected_rows"] == 14000
+    assert "Copenhagen" not in {m["city"] for m in spec["maps"]}
+    assert study.verify(tmp_path)["excluded_cities"] == ["Copenhagen"]
+
+    a.exclude_cities = ""
+    with pytest.raises(ValueError, match="exclusion"):
+        study.freeze(a)
