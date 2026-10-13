@@ -252,8 +252,11 @@ def main() -> None:
     if excluded - known:
         raise ValueError(f"Unknown excluded test cities: {sorted(excluded - known)}")
     cities = [city for city in reserved if city["name"] not in excluded]
-    if len(cities) < 2:
-        raise ValueError("At least two test cities must remain for the city-aware analysis")
+    # Single-city fixture preflight is valid: it audits geography only.
+    # Restrict opt-in exclusions so that an exploratory study cannot silently
+    # leave fewer than two independent city units for inference.
+    if excluded and len(cities) < 2:
+        raise ValueError("At least two test cities must remain after exclusions")
     if excluded:
         print(
             f"EXPLORATORY geographic subset: {[c['name'] for c in cities]}. "
