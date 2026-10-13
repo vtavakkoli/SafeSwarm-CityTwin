@@ -329,15 +329,23 @@ def freeze(args, smoke=False):
     requested_exclusions = {
         c.strip() for c in getattr(args, "exclude_cities", "").split(",") if c.strip()
     }
+    skip_sparse = bool(getattr(args, "skip_sparse_cities", False))
+    if skip_sparse and (smoke or not requested_exclusions):
+        raise ValueError(
+            "--skip-sparse-cities is only allowed with explicit --exclude-cities "
+            "in a NEW exploratory study"
+        )
     if (out / "study.json").exists():
         spec = verify(args.output_root)
         if spec["smoke_only"] != smoke:
             raise ValueError("Cannot mix smoke and publication studies")
-        if set(spec.get("excluded_cities", [])) != requested_exclusions:
+        if set(spec.get("requested_excluded_cities", spec.get("excluded_cities", []))) != requested_exclusions:
             raise ValueError(
                 "Frozen city's exclusion list differs from this command. "
                 "Use the original --exclude-cities or a NEW --output-root."
             )
+        if spec.get("skip_sparse_cities", False) != skip_sparse:
+            raise ValueError("Frozen sparse-city selection differs; use a NEW --output-root")
         return spec
     out.mkdir(parents=True, exist_ok=True)
     checkpoint = Path(args.checkpoint)
@@ -365,21 +373,78 @@ def freeze(args, smoke=False):
     spec["source_sha256_lf"] = sources()
     spec["software"] = software()
     spec["maps"] = []
+    spec["requested_excluded_cities"] = sorted(requested_exclusions)
+    spec["skip_sparse_cities"] = skip_sparse
+    spec["sparse_city_exclusions"] = []
+    prepared = []
+    # Decide the complete effective study geography BEFORE freezing any map.
+    # The original six-city protocol and all OSM/safety/reachability checks are
+    # unchanged. A reduced, exploratory run may explicitly omit a city whose
+    # real OSM missions are too sparse to support the minimum or three SWAP views.
     for ci, city in enumerate(spec["cities"]):
         layers = (
             synthetic_city_layers(spec["grid_size"], 42 + ci, city["place"])
             if smoke
             else real_layers(city, spec["grid_size"], args.cache_dir, args.offline)
         )
-        quality = {
-            z: topology_metrics(apply_start_zone(layers, spec["grid_size"], z), spec["grid_size"])
-            if smoke
-            else quality_check(layers, spec["grid_size"], z)
-            for z in spec["zones"]
-        }
-        signatures = [layer_digest(seeded_mission_view(layers, s)) for s in spec["swap_seeds"]]
-        if not smoke and len(set(signatures)) != len(signatures):
-            raise ValueError(f"SWAP views are not distinct for {city['name']}; inspect data before freezing")
+        count = len(layers["mission_zones"])
+        signatures = [layer_digest(seeded_mission_view(layers, seed)) for seed in spec["swap_seeds"]]
+        duplicate_swap = len(set(signatures)) != len(signatures)
+        low_targets = count < 6
+        # With <=6 targets, the SWAP sampler's min_targets=6 retains them all.
+        sparse_swap = count <= 6 and duplicate_swap
+        if not smoke and skip_sparse and (low_targets or sparse_swap):
+            reason = "fewer than six original OSM targets" if low_targets else (
+                "six-target map cannot provide three distinct SWAP views"
+            )
+            entry = {"city": city["name"], "original_targets": count, "reason": reason}
+            spec["sparse_city_exclusions"].append(entry)
+            print(
+                f"EXPLORATORY EXCLUSION: {city['name']} has {count} OSM targets; {reason}. "
+                "No missions are fabricated or quality thresholds lowered.",
+                flush=True,
+            )
+            continue
+        if not smoke and low_targets:
+            raise ValueError(
+                f"Map/start quality failure for {city['name']}: only {count} OSM "
+                "targets (minimum 6). Use --skip-sparse-cities only with "
+                "--exclude-cities in a NEW exploratory study."
+            )
+        quality = {}
+        for zone in spec["zones"]:
+            if smoke:
+                q = topology_metrics(apply_start_zone(layers, spec["grid_size"], zone), spec["grid_size"])
+            else:
+                try:
+                    q = quality_check(layers, spec["grid_size"], zone)
+                except ValueError as exc:
+                    raise ValueError(f"{city['name']}: {exc}") from exc
+            quality[zone] = q
+        if not smoke and duplicate_swap:
+            raise ValueError(
+                f"SWAP views are not distinct for {city['name']} ({count} targets); "
+                "inspect data before freezing."
+            )
+        prepared.append((city, layers, quality))
+    if len(prepared) < (1 if smoke else 2):
+        raise ValueError("Too few cities meet the geographic quality gate for analysis")
+    if spec["sparse_city_exclusions"]:
+        spec["cities"] = [city for city, _, _ in prepared]
+        spec["excluded_cities"] = sorted(
+            requested_exclusions | {entry["city"] for entry in spec["sparse_city_exclusions"]}
+        )
+        spec["exploratory_subset"] = True
+        spec["original_six_city_confirmation"] = False
+        spec["independent_geography"] = (
+            "EXPLORATORY: missing Copenhagen and explicit sparse-city exclusion; "
+            "not original six-city confirmation."
+        )
+        print(
+            f"EXPLORATORY EFFECTIVE CITIES: {[c['name'] for c in spec['cities']]}; "
+            f"excluded={spec['excluded_cities']}", flush=True,
+        )
+    for ci, (city, layers, quality) in enumerate(prepared):
         path = out / f"map-{ci}.json"
         save_layer_cache(path, layers)
         spec["maps"].append(
@@ -528,12 +593,22 @@ def parser():
         "--exclude-cities", default="",
         help="Explicit comma-separated cities omitted from a NEW exploratory subset (e.g. Copenhagen)",
     )
+    p.add_argument(
+        "--skip-sparse-cities", action="store_true",
+        help=(
+            "EXPLORATORY ONLY: with --exclude-cities, explicitly omit real-OSM "
+            "cities having fewer than 6 missions or insufficient distinct SWAP views "
+            "because of <=6 missions; freeze and report their names and counts"
+        ),
+    )
     return p
 
 
 def main(args):
     if getattr(args, "exclude_cities", "") and args.stage not in ("freeze", "all"):
         raise ValueError("--exclude-cities is supported only for freeze/all of a NEW exploratory study")
+    if getattr(args, "skip_sparse_cities", False) and args.stage not in ("freeze", "all"):
+        raise ValueError("--skip-sparse-cities is supported only for freeze/all of a NEW exploratory study")
     root = Path(args.output_root)
     root.mkdir(parents=True, exist_ok=True)
     with (root / "run.lock").open("a") as lock:

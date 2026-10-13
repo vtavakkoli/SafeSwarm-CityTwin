@@ -270,3 +270,69 @@ def test_excluded_city_freeze_is_separate_and_nonconfirmatory(tmp_path, monkeypa
     a.exclude_cities = ""
     with pytest.raises(ValueError, match="exclusion"):
         study.freeze(a)
+
+
+def test_sparse_city_requires_explicit_exploratory_opt_in(tmp_path, monkeypatch):
+    """A four-target city cannot silently become six missions or pass the SWAP gate."""
+    from copy import deepcopy
+
+    def fixture(city, grid, cache, offline):
+        layers = study.synthetic_city_layers(grid, seed=37, place_name=city["place"])
+        if city["name"] == "Helsinki":
+            keep = set(sorted(layers["mission_zones"])[:4])
+            layers["mission_zones"] = keep
+            layers["priority_cells"] = {
+                cell: layers["priority_cells"][cell] for cell in keep
+            }
+        return layers
+
+    monkeypatch.setattr(study, "real_layers", fixture)
+    monkeypatch.setattr(
+        study,
+        "quality_check",
+        lambda layers, grid, zone: study.topology_metrics(
+            study.apply_start_zone(layers, grid, zone), grid
+        ),
+    )
+    checkpoint = tmp_path / "checkpoint.json"
+    study.EARSPolicy().save_checkpoint(checkpoint)
+    a = args(tmp_path / "nonopt")
+    a.checkpoint = str(checkpoint)
+    a.exclude_cities = "Copenhagen"
+    a.skip_sparse_cities = False
+    with pytest.raises(ValueError, match="only 4 OSM targets"):
+        study.freeze(a)
+    assert not (tmp_path / "nonopt/frozen/study.json").exists()
+
+    b = args(tmp_path / "optin")
+    b.checkpoint = str(checkpoint)
+    b.exclude_cities = "Copenhagen"
+    b.skip_sparse_cities = True
+    spec = study.freeze(b)
+    assert spec["exploratory_subset"]
+    assert not spec["original_six_city_confirmation"]
+    assert spec["requested_excluded_cities"] == ["Copenhagen"]
+    assert spec["excluded_cities"] == ["Copenhagen", "Helsinki"]
+    assert spec["sparse_city_exclusions"] == [
+        {"city": "Helsinki", "original_targets": 4, "reason": "fewer than six original OSM targets"}
+    ]
+    assert len(spec["cities"]) == 4
+    assert spec["expected_rows"] == 11200
+    assert len(spec["maps"]) == 4
+    assert all(m["city"] != "Helsinki" for m in spec["maps"])
+    assert study.verify(b.output_root)["skip_sparse_cities"]
+    assert study.freeze(b)["expected_rows"] == 11200
+
+    b.skip_sparse_cities = False
+    with pytest.raises(ValueError, match="sparse-city"):
+        study.freeze(b)
+
+
+def test_sparse_skip_is_disallowed_for_original_confirmation_and_smoke(tmp_path):
+    a = args(tmp_path)
+    a.skip_sparse_cities = True
+    with pytest.raises(ValueError, match="only allowed"):
+        study.freeze(a)
+    a.exclude_cities = "Copenhagen"
+    with pytest.raises(ValueError, match="only allowed"):
+        study.freeze(a, smoke=True)

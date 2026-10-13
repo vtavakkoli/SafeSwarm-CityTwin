@@ -470,6 +470,7 @@ def report(root):
         m["city"] for m in spec["maps"]
         if m.get("metadata", {}).get("target_projection_method")
     ]
+    sparse_exclusions = spec.get("sparse_city_exclusions", [])
     amended_geography = bool(projected_maps)
     confirmation_protocol_completed = bool(
         not spec["smoke_only"] and not exploratory_subset and not amended_geography
@@ -486,6 +487,7 @@ def report(root):
             "This is an exploratory geographic amendment, NOT the original six-city "
             "independent confirmation study. No confirmatory superiority claim is permitted. "
             f"Evaluated {len(spec['cities'])} cities; excluded={spec.get('excluded_cities', [])}; "
+            f"Low-target omissions={sparse_exclusions}; "
             f"OSM grid-projection cities={projected_maps}. "
             "All inferential p-values and uncertainty intervals are descriptive."
         )
@@ -521,12 +523,22 @@ def report(root):
                 status,
                 verdict,
                 (
+                    "Explicit pre-evaluation sparse-city exclusions: "
+                    + (json.dumps(sparse_exclusions, sort_keys=True) if sparse_exclusions else "none")
+                    + ". Original mission counts have not been increased and no synthetic maps used."
+                ),
+                (
                     f"Evaluated cities: {', '.join(c['name'] for c in spec['cities'])}. "
                     f"Excluded: {', '.join(spec.get('excluded_cities', [])) or 'none'}. "
                     f"Distinct city units: {len(spec['cities'])}. "
                     f"Smallest possible exact two-sided city sign-flip p-value: "
                     f"{2 / (2 ** len(spec['cities'])):.6f}. "
-                    "With five city units, alpha=0.05 cannot be reached by this test."
+                    + (
+                        f"With {len(spec['cities'])} city units, alpha=0.05 cannot be "
+                        "reached by this test."
+                        if len(spec["cities"]) <= 5 else
+                        "The exact city sign-flip test is interpreted under its assumptions."
+                    )
                 ),
                 f"Completed {len(frame):,} of {spec['expected_rows']:,} episodes. "
                 f"Primary mean J difference = {main.delta:.6f}; two-sided city sign-flip p = {main.p_two_sided:.6f}; "
@@ -633,6 +645,8 @@ def report(root):
                 excluded_cities=spec.get("excluded_cities", []),
                 included_cities=[c["name"] for c in spec["cities"]],
                 evaluated_city_count=len(spec["cities"]),
+                sparse_city_exclusions=sparse_exclusions,
+                skip_sparse_cities_enabled=bool(spec.get("skip_sparse_cities", False)),
                 amended_osm_geography=amended_geography,
                 amended_osm_cities=projected_maps,
                 original_six_city_confirmation_completed=confirmation_protocol_completed,
