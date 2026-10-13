@@ -209,3 +209,45 @@ Never reuse the same `--output-root` with different geography or controller
 code; frozen source hashes explicitly reject this. Never silently omit
 additional cities, lower the target-reachability gate, or replace absent OSM
 data with synthetic fallback.
+
+
+## Explicit opt-in: omit a sparse real-OSM city during reduced-city evaluation
+
+Even after connectivity repair, the original quality gate requires at least
+**six** mission targets per city. If an OSM city has only **four**, no
+sensible real-OSM transformation may fabricate two additional targets. More
+critically, SWAP's `min_targets=6` yields identical target subsets for a
+city with at most six targets, making three independent SWAP dataset seeds
+impossible for that city. Do **not** lower the minimum target threshold.
+
+For the previously prepared five-city projected OSM cache, use this separate,
+explicitly requested **exploratory** exclusion if a city lacks enough real
+targets for the v9 matrix:
+
+```powershell
+git switch main
+git pull origin main
+docker compose run --rm --build unit-test
+
+docker compose run --rm --build ears-v9-publication python -m experiments.publication_ears_v9 all --exclude-cities Copenhagen --skip-sparse-cities --offline --cache-dir data/cache/v9-five-city-shift7-v1 --output-root results/publication-v9-available-sparse-filter-v1
+```
+
+The command records the real city/cities rejected for insufficient mission
+targets and their original counts in `frozen/study.json` under
+`sparse_city_exclusions` and in `report/conclusion.json`. All remaining
+cities still must pass their full geographic reachability gate, verified OSM
+origin and distinct SWAP mission views. No city is dropped unless the user
+provided both `--exclude-cities` and `--skip-sparse-cities`; this
+is never enabled for the original six-city study.
+
+If one of the five cities has four targets and the other four pass, the
+effective study runs **11,200 paired episodes**: 5,120 mission-stop,
+5,120 fixed-budget and 960 SWAP. It remains an amended, exploratory study
+and **cannot** be described as original six-city independent confirmation.
+With four city-level independent units, the exact two-sided sign-flip test
+has minimum attainable p-value **2/16 = 0.125** and cannot pass alpha=0.05.
+
+**Important:** Use a **new** `--output-root`. Earlier failed freezes may
+have left incomplete map/checkpoint files, and frozen source hashes disallow
+resuming an old study after code changes. Preserve the prior audit data,
+unchanged real city caches and all map projection coordinates for reviewers.
