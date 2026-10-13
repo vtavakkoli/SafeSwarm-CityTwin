@@ -242,20 +242,34 @@ def training(args):
         raise
 
 
-def study_spec(smoke=False):
+def study_spec(smoke=False, exclude_cities=""):
     geography = load_protocol(PROTOCOL_PATH)
     if not all(validate_protocol(geography).values()):
         raise ValueError("Training, validation and test geographies/start zones must be disjoint")
-    if len(select_cities(geography, "test")) != 6:
-        raise ValueError("The prespecified publication study requires six test cities")
+    reserved = select_cities(geography, "test")
+    if len(reserved) != 6:
+        raise ValueError("The original prespecified publication study requires six test cities")
+    excluded = {name.strip() for name in exclude_cities.split(",") if name.strip()}
+    unknown = excluded - {c["name"] for c in reserved}
+    if unknown:
+        raise ValueError(f"Unknown excluded test cities: {sorted(unknown)}")
+    if smoke and excluded:
+        raise ValueError("The synthetic smoke run uses its fixed single-city fixture")
+    selected = [c for c in reserved if c["name"] not in excluded]
+    if len(selected) < 2:
+        raise ValueError("Reduced-city analysis requires at least two distinct test cities")
+    exploratory_subset = bool(excluded)
     return dict(
         format="ears-publication-study-v1",
         smoke_only=smoke,
+        exploratory_subset=exploratory_subset,
+        original_six_city_confirmation=not exploratory_subset and not smoke,
+        excluded_cities=sorted(excluded),
         candidate=CANDIDATE,
         candidate_status="research candidate; historical promotion failed",
         routing_config=asdict(InformationRoutingConfig()),
         methods=METHODS,
-        cities=select_cities(geography, "test")[:1] if smoke else select_cities(geography, "test"),
+        cities=selected[:1] if smoke else selected,
         zones=geography["start_zones"]["test"],
         agents_grid=[4, 8] if smoke else [4, 8, 16, 32],
         dropout_grid=[0.03] if smoke else [0.0, 0.03, 0.15, 0.30],
@@ -274,7 +288,12 @@ def study_spec(smoke=False):
             "First full-target discovery step, capped at horizon for failures; "
             "success rate reported separately"
         ),
-        independent_geography="Only untouched if these six cities have not been inspected for prior tuning",
+        independent_geography=(
+            "EXPLORATORY, reduced geographic panel: not the original six-city confirmation; "
+            "test cities may already have been inspected and cannot be claimed as untouched"
+            if exploratory_subset else
+            "Only untouched if these six cities have not been inspected for prior tuning"
+        ),
         map_quality="OSM geography and targets; >=6 targets; all targets reachable from actual start bases",
         prior_selection_sha256=digest(EVIDENCE / "selected_model.json"),
     )
@@ -307,10 +326,18 @@ def jobs(spec):
 
 def freeze(args, smoke=False):
     out = Path(args.output_root) / "frozen"
+    requested_exclusions = {
+        c.strip() for c in getattr(args, "exclude_cities", "").split(",") if c.strip()
+    }
     if (out / "study.json").exists():
         spec = verify(args.output_root)
         if spec["smoke_only"] != smoke:
             raise ValueError("Cannot mix smoke and publication studies")
+        if set(spec.get("excluded_cities", [])) != requested_exclusions:
+            raise ValueError(
+                "Frozen city's exclusion list differs from this command. "
+                "Use the original --exclude-cities or a NEW --output-root."
+            )
         return spec
     out.mkdir(parents=True, exist_ok=True)
     checkpoint = Path(args.checkpoint)
@@ -324,7 +351,14 @@ def freeze(args, smoke=False):
             )
         EARSPolicy(model_path=checkpoint)  # validate before any evaluation
         shutil.copyfile(checkpoint, out / "ears_safe.json")
-    spec = study_spec(smoke)
+    spec = study_spec(smoke, exclude_cities=getattr(args, "exclude_cities", ""))
+    if spec["exploratory_subset"]:
+        print(
+            f"EXPLORATORY, NOT SIX-CITY CONFIRMATION: "
+            f"{[c['name'] for c in spec['cities']]}; "
+            f"excluded={spec['excluded_cities']}",
+            flush=True,
+        )
     spec["checkpoint_sha256"] = digest(out / "ears_safe.json")
     prior = read_json(EVIDENCE / "selected_model.json")
     spec["same_checkpoint_as_historical_validation"] = spec["checkpoint_sha256"] == prior["checkpoint_sha256"]
@@ -490,10 +524,16 @@ def parser():
     p.add_argument("--checkpoint", default="results/train/checkpoints/ears_safe.json")
     p.add_argument("--cache-dir", default="data/cache")
     p.add_argument("--offline", action="store_true")
+    p.add_argument(
+        "--exclude-cities", default="",
+        help="Explicit comma-separated cities omitted from a NEW exploratory subset (e.g. Copenhagen)",
+    )
     return p
 
 
 def main(args):
+    if getattr(args, "exclude_cities", "") and args.stage not in ("freeze", "all"):
+        raise ValueError("--exclude-cities is supported only for freeze/all of a NEW exploratory study")
     root = Path(args.output_root)
     root.mkdir(parents=True, exist_ok=True)
     with (root / "run.lock").open("a") as lock:

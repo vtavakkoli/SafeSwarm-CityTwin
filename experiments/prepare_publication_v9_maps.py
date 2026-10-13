@@ -206,6 +206,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--audit-path", default="results/publication-v9-map-amendment/audit.json")
     p.add_argument("--max-shift", type=int, default=3)
     p.add_argument(
+        "--exclude-cities", default="",
+        help="Explicit comma-separated test cities to omit in a NEW exploratory geography protocol",
+    )
+    p.add_argument(
         "--audit-only", action="store_true",
         help="Inspect required shifts for ALL test cities without writing modified maps",
     )
@@ -242,7 +246,23 @@ def main() -> None:
 
     protocol = load_protocol(args.protocol)
     zones = list(protocol["start_zones"]["test"])
-    cities = select_cities(protocol, "test")
+    reserved = select_cities(protocol, "test")
+    excluded = {name.strip() for name in args.exclude_cities.split(",") if name.strip()}
+    known = {c["name"] for c in reserved}
+    if excluded - known:
+        raise ValueError(f"Unknown excluded test cities: {sorted(excluded - known)}")
+    cities = [city for city in reserved if city["name"] not in excluded]
+    # Single-city fixture preflight is valid: it audits geography only.
+    # Restrict opt-in exclusions so that an exploratory study cannot silently
+    # leave fewer than two independent city units for inference.
+    if excluded and len(cities) < 2:
+        raise ValueError("At least two test cities must remain after exclusions")
+    if excluded:
+        print(
+            f"EXPLORATORY geographic subset: {[c['name'] for c in cities]}. "
+            f"Excluded: {sorted(excluded)}. NOT original six-city confirmation.",
+            flush=True,
+        )
     staged = []
     report = {
         "description": "Explicit new v9 geographic-methodology amendment, not original confirmation",
@@ -250,6 +270,10 @@ def main() -> None:
         "protocol": args.protocol,
         "grid_size": args.grid_size,
         "zones": zones,
+        "included_cities": [c["name"] for c in cities],
+        "excluded_cities": sorted(excluded),
+        "six_city_confirmation": not bool(excluded),
+        "exploratory_subset": bool(excluded),
         "max_shift_grid_cells": args.max_shift,
         "fetch_missing_sources": bool(args.fetch_missing),
         "overpass_url_override": args.overpass_url,

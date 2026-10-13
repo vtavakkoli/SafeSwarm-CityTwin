@@ -465,16 +465,35 @@ def report(root):
     )
     (out / "paper_table.tex").write_text(latex_table(paper_table))
     main = stats[stats.primary].iloc[0]
-    superiority = bool(not spec["smoke_only"] and main.delta > 0 and main.p_two_sided < 0.05)
-    status = "SMOKE TEST ONLY - SYNTHETIC DATA" if spec["smoke_only"] else "Completed frozen research study"
-    verdict = (
-        "The primary test supports an average J advantage on these six cities."
-        if superiority
-        else "The primary test does not establish an average J advantage."
+    exploratory_subset = bool(spec.get("exploratory_subset", False))
+    projected_maps = [
+        m["city"] for m in spec["maps"]
+        if m.get("metadata", {}).get("target_projection_method")
+    ]
+    amended_geography = bool(projected_maps)
+    confirmation_protocol_completed = bool(
+        not spec["smoke_only"] and not exploratory_subset and not amended_geography
+    )
+    superiority = bool(
+        confirmation_protocol_completed and main.delta > 0 and main.p_two_sided < 0.05
     )
     if spec["smoke_only"]:
+        status = "SMOKE TEST ONLY - SYNTHETIC DATA"
+        verdict = "Synthetic smoke results verify software execution only. No scientific conclusion is permitted."
+    elif exploratory_subset or amended_geography:
+        status = "EXPLORATORY - AMENDED GEOGRAPHIC PROTOCOL; NOT SIX-CITY CONFIRMATION"
         verdict = (
-            "Synthetic smoke results verify software execution only. No scientific conclusion is permitted."
+            "This is an exploratory geographic amendment, NOT the original six-city "
+            "independent confirmation study. No confirmatory superiority claim is permitted. "
+            f"Evaluated {len(spec['cities'])} cities; excluded={spec.get('excluded_cities', [])}; "
+            f"OSM grid-projection cities={projected_maps}. "
+            "All inferential p-values and uncertainty intervals are descriptive."
+        )
+    else:
+        status = "Completed frozen research study"
+        verdict = (
+            "The primary test supports an average J advantage on these six cities."
+            if superiority else "The primary test does not establish an average J advantage."
         )
     fig, axes = plt.subplots(1, 2, figsize=(10, 5), layout="constrained")
     percity = (
@@ -501,6 +520,14 @@ def report(root):
             [
                 status,
                 verdict,
+                (
+                    f"Evaluated cities: {', '.join(c['name'] for c in spec['cities'])}. "
+                    f"Excluded: {', '.join(spec.get('excluded_cities', [])) or 'none'}. "
+                    f"Distinct city units: {len(spec['cities'])}. "
+                    f"Smallest possible exact two-sided city sign-flip p-value: "
+                    f"{2 / (2 ** len(spec['cities'])):.6f}. "
+                    "With five city units, alpha=0.05 cannot be reached by this test."
+                ),
                 f"Completed {len(frame):,} of {spec['expected_rows']:,} episodes. "
                 f"Primary mean J difference = {main.delta:.6f}; two-sided city sign-flip p = {main.p_two_sided:.6f}; "
                 f"approximate 95% city-bootstrap interval [{main.city_bootstrap_low:.6f}, {main.city_bootstrap_high:.6f}]. "
@@ -553,7 +580,13 @@ def report(root):
             ],
         ),
     ]
-    sections += historical_sections()[2:]
+    history = historical_sections()[2:]
+    if exploratory_subset or amended_geography:
+        # Historical six-city *planned study* prose must not masquerade as
+        # the completed reduced-city protocol. Keep the historical failures.
+        history = [(h, items) for h, items in history
+                   if h not in ("Frozen final evaluation", "Reproduction and provenance", "Before submission")]
+    sections += history
     sections.append(
         (
             "Run identity",
@@ -575,8 +608,12 @@ def report(root):
                     "Independent confirmation remains pending.",
                     (
                         "This smoke run is not independent confirmation."
-                        if spec["smoke_only"]
-                        else "The confirmation results for this study are reported above."
+                        if spec["smoke_only"] else (
+                            "This exploratory amended-geography analysis is not independent "
+                            "six-city confirmation."
+                            if exploratory_subset or amended_geography
+                            else "The confirmation results for this study are reported above."
+                        )
                     ),
                 )
                 if isinstance(i, str)
@@ -592,6 +629,14 @@ def report(root):
             dict(
                 smoke_only=spec["smoke_only"],
                 full_matrix_completed=True,
+                exploratory_subset=exploratory_subset,
+                excluded_cities=spec.get("excluded_cities", []),
+                included_cities=[c["name"] for c in spec["cities"]],
+                evaluated_city_count=len(spec["cities"]),
+                amended_osm_geography=amended_geography,
+                amended_osm_cities=projected_maps,
+                original_six_city_confirmation_completed=confirmation_protocol_completed,
+                smallest_attainable_signflip_p=2 / (2 ** len(spec["cities"])),
                 primary_average_advantage_supported=superiority,
                 primary_delta=float(main.delta),
                 primary_p=float(main.p_two_sided),

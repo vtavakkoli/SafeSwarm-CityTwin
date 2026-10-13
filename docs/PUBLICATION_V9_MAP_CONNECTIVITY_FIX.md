@@ -160,3 +160,52 @@ Note the separate geographic blocker: Lisbon required **up to 7 grid cells**
 of target projection in the reported run. The default 3-cell safety gate is
 unchanged. A complete six-city OSM audit is prerequisite to any justified
 new methodology amendment, not automatic permission to run the benchmark.
+
+
+## Explicit five-city exploratory study: omit unavailable Copenhagen
+
+The default `ears-v9-publication` service **still requires the original six
+cities**. When Copenhagen has no verified OSM source due to a server outage,
+use an **explicit** `--exclude-cities Copenhagen` on BOTH the map-preparation
+and evaluation commands. This is a **new exploratory, reduced-city protocol**
+with a different study root, not the preregistered six-city confirmation.
+
+In the audited real cache, Lisbon has seven stranded POIs. Four exceed the
+original three-cell shift bound; the largest proposed projection is **7** grid
+cells. The following example `--max-shift 7` is an **explicit, post-audit
+geographic-methodology amendment for exploratory analysis only**, not a
+scientific validation of those projections. Review all source/target cells,
+their physical meaning and resulting metric sensitivity before publication.
+The three-cell default and original source maps remain unchanged.
+
+```powershell
+git switch main
+git pull origin main
+
+# Explicit five-city OSM map amendment: EXCLUDES Copenhagen.
+# Choose NEW, versioned output paths; all source caches stay immutable.
+docker compose run --rm --build ears-v9-publication python -m experiments.prepare_publication_v9_maps --exclude-cities Copenhagen --max-shift 7 --output-cache-dir data/cache/v9-five-city-shift7-v1 --audit-path results/publication-v9-map-amendment/five-city-shift7-v1.json
+
+# Run a SEPARATE exploratory study. It does NOT touch results/publication-v9.
+docker compose run --rm --build ears-v9-publication python -m experiments.publication_ears_v9 all --exclude-cities Copenhagen --offline --cache-dir data/cache/v9-five-city-shift7-v1 --output-root results/publication-v9-five-city-shift7-v1
+```
+
+Expected paired matrix: five cities, 16 agent/dropout configurations, two
+standard panels, 20 episodes, four methods, three SWAP target seeds: **14,000
+episodes** (6,400 mission-stop + 6,400 fixed-budget + 1,200 SWAP).
+
+The output is under `results/publication-v9-five-city-shift7-v1/`, including
+`report/report.pdf`, `report/index.html`, `report/conclusion.json` and
+`frozen/study.json`. The report discloses excluded cities and amended maps.
+It must NOT present this run as the original six-city confirmation.
+
+Statistical limitation: with five independent city units, the smallest
+two-sided exact city sign-flip p-value is **2 / 32 = 0.0625**; superiority
+cannot pass the original alpha=0.05 primary threshold regardless of the
+observed positive difference. The pre-existing historical validation failures
+also remain part of the paper. Report comparative outcomes descriptively.
+
+Never reuse the same `--output-root` with different geography or controller
+code; frozen source hashes explicitly reject this. Never silently omit
+additional cities, lower the target-reachability gate, or replace absent OSM
+data with synthetic fallback.

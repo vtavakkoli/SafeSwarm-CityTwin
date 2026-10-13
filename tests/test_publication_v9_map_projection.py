@@ -239,3 +239,46 @@ def test_cli_lists_overpass_endpoint_option():
     with patch.object(sys, "argv", ["prepare_publication_v9_maps", "--overpass-url", "https://overpass.private.coffee/api"]):
         args = parse_args()
     assert args.overpass_url == "https://overpass.private.coffee/api"
+
+
+def test_preflight_explicit_city_exclusion_never_fetches_omitted_city(tmp_path):
+    """A manually omitted city remains recorded as an exploratory exclusion."""
+    from src.environment.obstacles import _cache_path, save_layer_cache
+
+    root = Path(__file__).resolve().parents[1]
+    raw = tmp_path / "raw"
+    derived = tmp_path / "derived"
+    audit = tmp_path / "subset-preflight.json"
+    places = ["One, OSM", "Two, OSM", "Copenhagen, Denmark"]
+    for place in places[:2]:
+        save_layer_cache(_cache_path(raw, place, 9, 1400), isolated_poi_fixture())
+    protocol = tmp_path / "protocol.json"
+    protocol.write_text(json.dumps({
+        "cities": [
+            {"name": "One", "place": places[0], "split": "test"},
+            {"name": "Two", "place": places[1], "split": "test"},
+            {"name": "Copenhagen", "place": places[2], "split": "test"},
+        ],
+        "start_zones": {"test": ["north_east", "south_west"]},
+    }), encoding="utf-8")
+
+    result = subprocess.run([
+        sys.executable, "-m", "experiments.prepare_publication_v9_maps",
+        "--protocol", str(protocol),
+        "--grid-size", "9",
+        "--source-cache-dir", str(raw),
+        "--output-cache-dir", str(derived),
+        "--audit-path", str(audit),
+        "--audit-only",
+        "--max-shift", "3",
+        "--exclude-cities", "Copenhagen",
+    ], cwd=root, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    data = json.loads(audit.read_text(encoding="utf-8"))
+    assert data["excluded_cities"] == ["Copenhagen"]
+    assert data["included_cities"] == ["One", "Two"]
+    assert data["exploratory_subset"]
+    assert data["cities_expected"] == 2
+    assert len(data["cities"]) == 2
+    assert data["all_source_cities_available"]
+    assert not derived.exists()
