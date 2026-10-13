@@ -10,7 +10,15 @@ import argparse
 import copy
 import hashlib
 import json
+import sys
 from pathlib import Path
+
+# Direct execution (python experiments/prepare_publication_v9_maps.py) places
+# experiments/ rather than the repository root on sys.path. Match the other
+# experiment entrypoints before importing the project's top-level packages.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from experiments.benchmark_ears_v8 import _graph_distances, topology_metrics
 from src.environment.obstacles import _cache_path, load_layer_cache, load_real_city_layers, save_layer_cache
