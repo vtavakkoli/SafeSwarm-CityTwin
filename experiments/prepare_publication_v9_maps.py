@@ -139,6 +139,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output-cache-dir", default="data/cache/v9-projected-v1")
     p.add_argument("--audit-path", default="results/publication-v9-map-amendment/audit.json")
     p.add_argument("--max-shift", type=int, default=3)
+    p.add_argument(
+        "--audit-only", action="store_true",
+        help="Inspect required shifts for ALL test cities without writing modified maps",
+    )
     return p.parse_args()
 
 
@@ -181,6 +185,45 @@ def main() -> None:
             raise ValueError(f"{city['name']}: actual OSM geography and missions required")
         if metadata.get("target_projection_method"):
             raise ValueError(f"{city['name']}: source must be raw, not an already amended map")
+        if args.audit_only:
+            # Manhattan distance in a grid cannot exceed 2 * (grid_size - 1).
+            # Use this mathematical maximum ONLY for read-only inspection,
+            # never as permission to create amended publication maps.
+            try:
+                _, audit = project_targets(
+                    layers, args.grid_size, zones, 2 * (args.grid_size - 1)
+                )
+                moves = audit["modifications"]
+                audit["requested_shift_limit"] = args.max_shift
+                audit["required_max_shift"] = max(
+                    (m["grid_manhattan_shift"] for m in moves), default=0
+                )
+                audit["over_limit"] = [
+                    m for m in moves if m["grid_manhattan_shift"] > args.max_shift
+                ]
+                audit["within_requested_limit"] = not audit["over_limit"]
+                audit["status"] = "within_limit" if audit["within_requested_limit"] else "exceeds_limit"
+                print(
+                    f"{city['name']}: {len(moves)} projected POIs, "
+                    f"max required shift={audit['required_max_shift']}, "
+                    f"over limit={len(audit['over_limit'])}",
+                    flush=True,
+                )
+            except ValueError as exc:
+                audit = {
+                    "status": "invalid_map",
+                    "error": str(exc),
+                    "within_requested_limit": False,
+                }
+                print(f"{city['name']}: cannot project ({exc})", flush=True)
+            audit.update({
+                "city": city["name"],
+                "source_snapshot_sha256": hashlib.sha256(original_path.read_bytes()).hexdigest(),
+                "source_path": str(original_path),
+            })
+            report["cities"].append(audit)
+            continue
+
         amended, audit = project_targets(layers, args.grid_size, zones, args.max_shift)
         source_sha = hashlib.sha256(original_path.read_bytes()).hexdigest()
         amended["metadata"]["source_osm_snapshot_sha256"] = source_sha
@@ -200,6 +243,25 @@ def main() -> None:
         staged.append((output_path, amended))
         print(f"{city['name']}: projected {audit['modified_targets']}/"
               f"{audit['source_osm_target_count']} missions", flush=True)
+
+    if args.audit_only:
+        report["status"] = "preflight_only"
+        report["all_within_requested_limit"] = all(
+            city["within_requested_limit"] for city in report["cities"]
+        )
+        report["meaning"] = (
+            "No derived maps created; this preflight does NOT authorize increasing "
+            "the relocation threshold or imply original confirmation data."
+        )
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        audit_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"Full six-city audit: {audit_path}", flush=True)
+        print(
+            "All within configured limit" if report["all_within_requested_limit"]
+            else "At least one city exceeds the limit; review the audit BEFORE making a protocol amendment",
+            flush=True,
+        )
+        return
 
     for path, amended in staged:
         save_layer_cache(path, amended)
