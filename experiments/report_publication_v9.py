@@ -533,7 +533,12 @@ def report(root):
                     f"Distinct city units: {len(spec['cities'])}. "
                     f"Smallest possible exact two-sided city sign-flip p-value: "
                     f"{2 / (2 ** len(spec['cities'])):.6f}. "
-                    "With five city units, alpha=0.05 cannot be reached by this test."
+                    (
+                        f"With {len(spec['cities'])} city units, alpha=0.05 cannot be "
+                        "reached by this test."
+                        if len(spec["cities"]) <= 5 else
+                        "The exact city sign-flip test is interpreted under its assumptions."
+                    )
                 ),
                 f"Completed {len(frame):,} of {spec['expected_rows']:,} episodes. "
                 f"Primary mean J difference = {main.delta:.6f}; two-sided city sign-flip p = {main.p_two_sided:.6f}; "
