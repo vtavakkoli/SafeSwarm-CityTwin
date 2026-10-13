@@ -533,7 +533,7 @@ def report(root):
                     f"Distinct city units: {len(spec['cities'])}. "
                     f"Smallest possible exact two-sided city sign-flip p-value: "
                     f"{2 / (2 ** len(spec['cities'])):.6f}. "
-                    (
+                    + (
                         f"With {len(spec['cities'])} city units, alpha=0.05 cannot be "
                         "reached by this test."
                         if len(spec["cities"]) <= 5 else
