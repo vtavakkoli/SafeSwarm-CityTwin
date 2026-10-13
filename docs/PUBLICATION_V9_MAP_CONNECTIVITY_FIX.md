@@ -72,3 +72,29 @@ checkpoint lineage, all safety/coverage results, and any negative findings.
 Independence is not restored by preprocessing if the same six confirmation
 cities were already used to select model hyperparameters or inspect test
 performance. Preserve original caches, derived caches and all audit files.
+
+
+## Diagnose all six confirmation cities before revising a displacement limit
+
+When a target needs more than `--max-shift 3`, first run the **read-only
+preflight**. It uses the same deterministic target-assignment algorithm with
+the mathematical grid-distance maximum only to *measure* displacement; it
+creates no derived OSM map and does not authorize a higher tolerance.
+
+```bash
+docker compose run --rm --build ears-v9-publication python -m experiments.prepare_publication_v9_maps --audit-only --max-shift 3 --audit-path results/publication-v9-map-amendment/preflight.json
+```
+
+Inspect `results/publication-v9-map-amendment/preflight.json`:
+
+- `cities[].required_max_shift`: largest proposed Manhattan displacement
+- `cities[].over_limit`: the original target coordinates, candidate substitute
+  coordinates, priority and displacement for each target exceeding the limit
+- `all_within_requested_limit`: whether all six pass the specified limit
+- `source_snapshot_sha256`: original OSM-cache file fingerprint
+
+If the preflight proposes large shifts, investigate the rasterization,
+the restricted/obstacle masks and the original OSM POIs. Do **not** silently
+adopt the measured maximum as the new default or call the resulting study
+unmodified, independent confirmation evidence. Prespecify and justify a
+new geographic protocol before creating any amended maps or collecting results.
