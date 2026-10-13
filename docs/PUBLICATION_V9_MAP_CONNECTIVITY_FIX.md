@@ -131,3 +131,32 @@ limit). That is a substantive geographic-methodology issue, not a cache
 error. Complete the six-city audit and review those displacements before
 running a *new, explicitly amended* publication study. This patch does not
 raise the limit, remove targets or change the frozen quality gate.
+
+
+## Retry a missing original OSM snapshot against an alternate Overpass server
+
+A corporate gateway or the default Overpass service may return HTTP 500 or a
+network timeout. The publication CLI now supports an **explicit** OSMnx
+`--overpass-url` override for `--fetch-missing`. OSMnx expects the base URL
+ending in `/api`, **not** `/api/interpreter`; it appends that path itself.
+The override only affects absent raw OSM snapshots. Cached city data remain
+unchanged, and only verified OSM geography and missions are accepted.
+
+Example, from the repository root (choose a **new** audit filename each time):
+
+```bash
+git switch main
+git pull --ff-only
+docker compose run --rm --build ears-v9-publication python -m experiments.prepare_publication_v9_maps --audit-only --fetch-missing --overpass-url https://overpass.private.coffee/api --max-shift 3 --audit-path results/publication-v9-map-amendment/preflight-overpass-alt.json
+```
+
+The public alternate instance comes from the OpenStreetMap Wiki's listed
+global Overpass servers. Availability varies. This is not guaranteed to fix
+a firewall/proxy timeout: network access from **inside the Docker container**
+must permit the destination. If all backends fail, keep the original failure
+visible in the audit; **never substitute a synthetic Copenhagen map**.
+
+Note the separate geographic blocker: Lisbon required **up to 7 grid cells**
+of target projection in the reported run. The default 3-cell safety gate is
+unchanged. A complete six-city OSM audit is prerequisite to any justified
+new methodology amendment, not automatic permission to run the benchmark.
