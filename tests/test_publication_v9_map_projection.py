@@ -201,3 +201,41 @@ def test_fetch_missing_rejects_synthetic_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr(prep, "load_real_city_layers", synthetic)
     with pytest.raises(ValueError, match="No synthetic fallback"):
         prep.load_verified_source(city, 9, tmp_path, fetch_missing=True)
+
+
+def test_overpass_endpoint_override_uses_osmnx_base_url(monkeypatch):
+    import osmnx as ox
+    from experiments.prepare_publication_v9_maps import configure_overpass_endpoint
+
+    original = ox.settings.overpass_url
+    try:
+        configure_overpass_endpoint("https://overpass.private.coffee/api")
+        assert ox.settings.overpass_url == "https://overpass.private.coffee/api"
+        configure_overpass_endpoint(None)
+        assert ox.settings.overpass_url == "https://overpass.private.coffee/api"
+    finally:
+        monkeypatch.setattr(ox.settings, "overpass_url", original)
+
+
+@pytest.mark.parametrize("url", [
+    "http://overpass.private.coffee/api",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.private.coffee/api?token=unsafe",
+    "https://user:secret@overpass.private.coffee/api",
+    "https://overpass.private.coffee",
+])
+def test_overpass_endpoint_override_rejects_invalid_urls(url):
+    from experiments.prepare_publication_v9_maps import configure_overpass_endpoint
+
+    with pytest.raises(ValueError, match="base URL"):
+        configure_overpass_endpoint(url)
+
+
+def test_cli_lists_overpass_endpoint_option():
+    from experiments.prepare_publication_v9_maps import parse_args
+    import sys
+    from unittest.mock import patch
+
+    with patch.object(sys, "argv", ["prepare_publication_v9_maps", "--overpass-url", "https://overpass.private.coffee/api"]):
+        args = parse_args()
+    assert args.overpass_url == "https://overpass.private.coffee/api"
