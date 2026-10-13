@@ -1,6 +1,7 @@
 """Synthetic-fixture tests for publication v9 OSM target-cell projection."""
 
 from copy import deepcopy
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -72,3 +73,43 @@ def test_map_preparation_runs_as_direct_script():
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "--max-shift" in result.stdout
+
+
+def test_audit_only_reports_full_shift_without_modifying_maps(tmp_path):
+    """Preflight measures over-limit moves but never commits a derived map."""
+    from src.environment.obstacles import _cache_path, save_layer_cache
+
+    root = Path(__file__).resolve().parents[1]
+    city = "Fixture, OSM"
+    raw = tmp_path / "raw"
+    projected = tmp_path / "derived"
+    audit_path = tmp_path / "preflight.json"
+    cache_file = _cache_path(raw, city, 9, 1400)
+    save_layer_cache(cache_file, isolated_poi_fixture())
+    original_bytes = cache_file.read_bytes()
+
+    protocol = tmp_path / "protocol.json"
+    protocol.write_text(json.dumps({
+        "cities": [{"name": "Fixture", "place": city, "split": "test", "radius_m": 1400}],
+        "start_zones": {"test": ["north_east", "south_west"]},
+    }), encoding="utf-8")
+
+    result = subprocess.run([
+        sys.executable, "-m", "experiments.prepare_publication_v9_maps",
+        "--protocol", str(protocol),
+        "--grid-size", "9",
+        "--source-cache-dir", str(raw),
+        "--output-cache-dir", str(projected),
+        "--audit-path", str(audit_path),
+        "--max-shift", "1",
+        "--audit-only",
+    ], cwd=root, text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(audit_path.read_text(encoding="utf-8"))
+    assert report["status"] == "preflight_only"
+    assert not report["all_within_requested_limit"]
+    assert report["cities"][0]["city"] == "Fixture"
+    assert report["cities"][0]["required_max_shift"] >= 2
+    assert report["cities"][0]["over_limit"]
+    assert cache_file.read_bytes() == original_bytes
+    assert not projected.exists()
