@@ -1,0 +1,27 @@
+{
+  "scope": "technical evidence review; not an IEEE acceptance prediction",
+  "original_evidence_integrity_passed": true,
+  "rows": 11200,
+  "cities": 4,
+  "primary_delta_J": 0.014470369238218424,
+  "city_signflip_p": 0.25,
+  "minimum_two_sided_p": 0.125,
+  "regression_settings": 6,
+  "total_settings": 64,
+  "worst_setting_delta_J": -0.14741738709751573,
+  "source_mismatches": [
+    "docker/Dockerfile"
+  ],
+  "source_additions": [],
+  "study_sha256": "3cf5357758c10e0030d50c370c67cc0a601609f454338f28fc7a44bf6af0c733",
+  "episodes_sha256": "3f32f44b0fa60683c685cd57fe9a380cd2889d202ca6caaa7166df25169f475d",
+  "checkpoint_sha256": "3023a2cb283206b9dfd0c0679bdfbb29aaad9e633b599c2470cd4b196bf326bf",
+  "historical_selected_method": "EARS-Safe-v7",
+  "independent_confirmation_established": false,
+  "submission_recommendation": "Revise evidence and align manuscript before submission",
+  "safety_counts": {
+    "actual_safety_incidents": 0,
+    "battery_failures": 0,
+    "blocked_moves": 0
+  }
+}

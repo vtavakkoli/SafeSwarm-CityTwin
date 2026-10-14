@@ -1,5 +1,18 @@
 # SafeSwarm-CityTwin
 
+## Publication readiness audit and controlled v9 experiments
+
+The [14 October 2026 review](docs/EARS_V9_PUBLICATION_READINESS.md) audits the
+11,200-episode four-city exploratory run and provides a new 256-episode mechanism
+pilot, raw results, regression diagnostics and resumable periodic-routing and
+sensing-reservation controls. The evidence does not yet support a confirmatory
+superiority claim. See the review for the manuscript gaps and the full follow-up command.
+
+```bash
+docker compose run --rm --build ears-v9-audit
+docker compose run --rm --build ears-v9-mechanism-probe
+```
+
 ## v9 final research workflow
 
 See [the publication guide](docs/EARS_V9_PUBLICATION.md) for standalone controller

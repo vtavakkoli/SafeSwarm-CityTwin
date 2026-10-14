@@ -1,0 +1,48 @@
+{
+  "algorithm": "EARS: Event-driven Ant Reallocation Search",
+  "ears_config": {
+    "cluster_penalty": 0.85,
+    "congestion_trigger": 1.28,
+    "explore_weight": 1.0,
+    "global_congestion_penalty": 0.7,
+    "global_distance_penalty": 0.24,
+    "global_energy_penalty": 0.32,
+    "global_evidence_weight": 1.1,
+    "global_frontier_weight": 1.35,
+    "global_novelty_weight": 0.72,
+    "global_pheromone_weight": 0.18,
+    "global_revisit_penalty": 0.95,
+    "global_uncertainty_weight": 0.45,
+    "goal_spacing": 5,
+    "history_window": 12,
+    "local_revisit_trigger": 0.62,
+    "min_steps_before_reallocation": 7,
+    "negative_congestion_deposit": 0.18,
+    "negative_decay": 0.92,
+    "negative_diffusion": 0.12,
+    "negative_escape_trigger": 0.48,
+    "negative_pheromone_weight": 0.0,
+    "negative_visit_deposit": 0.24,
+    "pheromone_weight": 0.45,
+    "relocation_cooldown": 9,
+    "relocation_duration": 6,
+    "revisit_penalty": 0.55,
+    "risk_weight": 1.4,
+    "stagnation_unique_ratio": 0.38,
+    "target_distance_weight": 0.025,
+    "uncertainty_weight": 0.55
+  },
+  "format": "safeswarm-ears-v1",
+  "metadata": {
+    "selected_utc": "2026-08-20T00:24:52.514339+00:00",
+    "selection_rule": "train shortlist + validation robust score; test/SWAP never consulted",
+    "validation": {
+      "ci95": 0.01568039196514965,
+      "domain_std": 0.030984381571789916,
+      "domains": 8.0,
+      "mean_score": 0.7874353470040292,
+      "robust_score": 0.7671238486722125,
+      "worst_domain_score": 0.7246910866551893
+    }
+  }
+}

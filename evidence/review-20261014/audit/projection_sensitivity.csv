@@ -1,0 +1,3 @@
+analysis,delta,p_two_sided,city_bootstrap_low,city_bootstrap_high,cities,cities_positive
+all cities,0.014470369238218424,0.25,0.0019907229065714996,0.03178964728548937,4,3
+no targets physically moved (post hoc),0.0059220952037138215,0.5,-0.0014951894340473452,0.012448459928428036,3,2

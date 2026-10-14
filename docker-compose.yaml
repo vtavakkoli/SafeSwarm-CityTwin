@@ -229,3 +229,15 @@ services:
   ears-v9-publication-smoke:
     <<: *benchmark-common
     command: ["python", "experiments/publication_ears_v9.py", "smoke", "--offline", "--output-root", "results/publication-v9-smoke"]
+
+  ears-v9-audit:
+    <<: *benchmark-common
+    command: ["python", "tools/publication_readiness_v9.py", "--study-root", "${EARS_REVIEW_SOURCE:-results/publication-v9-sparse-filter-v2}", "--output-root", "${EARS_AUDIT_ROOT:-results/publication-v9-audit}"]
+
+  ears-v9-mechanism-probe:
+    <<: *benchmark-common
+    environment:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    command: ["python", "tools/mechanism_probe_v9.py", "--study-root", "${EARS_REVIEW_SOURCE:-results/publication-v9-sparse-filter-v2}", "--output-root", "${EARS_PROBE_ROOT:-results/publication-v9-mechanism-pilot}", "--profile", "${EARS_PROBE_PROFILE:-pilot}"]
