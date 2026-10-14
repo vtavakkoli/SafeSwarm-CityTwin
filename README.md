@@ -1,292 +1,188 @@
+<div align="center">
+
 # SafeSwarm-CityTwin
 
-## Publication readiness audit and controlled v9 experiments
+**Reproducible multi-robot exploration on urban map abstractions**
 
-The [14 October 2026 review](docs/EARS_V9_PUBLICATION_READINESS.md) audits the
-11,200-episode four-city exploratory run and provides a new 256-episode mechanism
-pilot, raw results, regression diagnostics and resumable periodic-routing and
-sensing-reservation controls. The evidence does not yet support a confirmatory
-superiority claim. See the review for the manuscript gaps and the full follow-up command.
+[![CI](https://github.com/vtavakkoli/SafeSwarm-CityTwin/actions/workflows/ci.yml/badge.svg)](https://github.com/vtavakkoli/SafeSwarm-CityTwin/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+[Quick start](#quick-start) · [Experiments](#experiments) · [Results](#results-and-reproducibility) · [Development](#development) · [Citation](#citation-and-license)
+
+</div>
+
+SafeSwarm-CityTwin is a research benchmark for comparing swarm controllers under
+shared sensing, energy, and runtime safety constraints. It converts cached
+OpenStreetMap features into reproducible grid environments and evaluates policies
+with matched scenarios, frozen checkpoints, and explicit geographic protocols.
+
+- **Urban exploration:** hidden mission targets, spatial coverage, battery use, and team coordination.
+- **Controlled comparisons:** ant-inspired search, event-driven relocation, information routing, and mechanism ablations.
+- **Reproducible evaluation:** immutable map snapshots, paired seeds, source hashes, and resumable episode journals.
+- **Auditable results:** raw metrics, city-level comparisons, runtime diagnostics, and generated reports.
+
+## Quick start
+
+Install Docker with Docker Compose, then run a small synthetic verification study:
+
+```bash
+git clone https://github.com/vtavakkoli/SafeSwarm-CityTwin.git
+cd SafeSwarm-CityTwin
+docker compose run --rm --build ears-v9-publication-smoke
+```
+
+Outputs are written to `results/publication-v9-smoke/`. This command verifies the
+software workflow using synthetic maps; it is not a real-city evaluation.
+
+All commands below run from the repository root. Docker mounts `results/` and
+`data/cache/` to retain outputs and downloaded map snapshots on the host.
+
+## Experiments
+
+### Controlled routing comparison
+
+The mechanism experiment compares four variants with the same checkpoint,
+scenario seeds, return logic, and runtime safety monitor:
+
+| Variant | Role |
+| --- | --- |
+| **EARS-Info-v9** | Information-aware local exploration with event-driven relocation |
+| **EARS-Info-Local-v9** | Matched control with relocation disabled |
+| **EARS-Info-Periodic16** | Relocation requests on a fixed 16-step schedule |
+| **EARS-Info-NoSensingReservations** | Sensing-overlap reservations disabled; collision reservations retained |
+
+The input is a completed frozen study. For the supplied four-city dataset, extract
+its archive so that `results/publication-v9-sparse-filter-v2/frozen/study.json`
+exists. The source directory must also contain its episode journal, CSV,
+diagnostics, manifest, checkpoint, and frozen maps.
+
+**Audit the completed source study:**
 
 ```bash
 docker compose run --rm --build ears-v9-audit
+```
+
+**Run the 256-episode pilot:**
+
+```bash
 docker compose run --rm --build ears-v9-mechanism-probe
 ```
 
-## v9 final research workflow
-
-See [the publication guide](docs/EARS_V9_PUBLICATION.md) for standalone controller
-training, frozen/resumable evaluation, ablation, fixed-budget and SWAP panels,
-and automatically generated PDF/HTML/Markdown reports with statistical tests.
-The original validation retained v7; Info-v9 remains a research candidate whose
-independent confirmation is pending. All original validation evidence is retained.
+**Run the full 10,240-episode comparison:**
 
 ```bash
-docker compose run --rm --build ears-v9-publication
+docker compose run --rm --build ears-v9-mechanism-probe python tools/mechanism_probe_v9.py --study-root results/publication-v9-sparse-filter-v2 --output-root results/publication-v9-mechanism-full --profile full
 ```
 
-This continues from `results/train/checkpoints/ears_safe.json` and saves the
-complete study to `results/publication-v9/`. See the guide before training anew.
+For this four-city input, the full profile evaluates 4/8/16/32 robots, dropout
+probabilities 0/0.03/0.15/0.30, and 20 paired episodes per setting. Both mission-stop
+and fixed-budget panels are included. Fixed-budget disables mission-completion
+stopping; all-agent termination and safety checks remain active.
 
-A reproducible research benchmark for **safety-constrained multi-agent urban search** on cached real OpenStreetMap city snapshots. SafeSwarm separates training, robust validation, primary held-out testing, and post-selection SWAP stress testing. Primary policies obey an observable-only action contract.
+Use a separate output directory for each profile. To resume an interrupted run,
+repeat the identical command with the same code, dependencies, and thread settings.
+Completed episodes are retained. Keep the existing image for a resumed study;
+source or dependency changes are rejected. Do not run multiple writers against
+the same study directory or edit its frozen artifacts.
 
-## v6: EARS — improve Ant without destroying what makes Ant strong
+The default audit and pilot output directories are `results/publication-v9-audit/`
+and `results/publication-v9-mechanism-pilot/`. The full command above writes to
+`results/publication-v9-mechanism-full/`. All three preserve the input study.
 
-The v5 real-city run exposed a useful result: `PRISM-Ant-Safe` could approach AntSwarm's discovery and even exceed it on some SWAP views, yet `AntSwarmSafe` still won overall because it used **less distance, less energy, and less redundant coverage**.
+### Additional workflows
 
-v6 therefore changes the research question.
+| Workflow | Command | Prerequisite |
+| --- | --- | --- |
+| Calibrate a base EARS controller | `docker compose run --rm --build ears-v9-train` | Real training and validation maps; new training output directory |
+| Freeze and evaluate the v9 study | `docker compose run --rm --build ears-v9-publication` | Base checkpoint at `results/train/checkpoints/ears_safe.json` and verified OSM maps |
+| Regenerate a completed study report | `docker compose run --rm --build ears-v9-report` | Complete study at `results/publication-v9/` with matching source hashes |
+| Render the four-method city demo | `docker compose run --rm --build demo-top4` | Trained checkpoints and real-city maps |
 
-Instead of continuously blending more global planning into Ant, v6 keeps **AntSwarmSafe unchanged as the reference** and introduces global intelligence only when observable search quality degrades.
-
-### EARS-Safe
-
-**EARS — Event-driven Ant Reallocation Search** uses the original Ant-style local rule by default. Global relocation is triggered only when an agent shows evidence of:
-
-- trajectory stagnation;
-- excessive local revisits;
-- local swarm congestion.
-
-When triggered, EARS assigns a new observable frontier/evidence goal using a utility that explicitly penalizes:
-
-- path distance;
-- predicted movement energy;
-- revisited cells;
-- agent congestion;
-- goals that would compromise safe battery return.
-
-The goal is not “more exploration.” It is **higher marginal target discovery per unit movement**.
-
-### EARS-NP-Safe
-
-`EARS-NP-Safe` adds a repulsive **negative-pheromone exclusion field**. Repeatedly visited and congested cells deposit negative pheromone; the field decays and diffuses into a small spatial halo. This discourages agents from tracing the same corridors or nearly parallel paths.
-
-Positive observable evidence remains in the existing environment pheromone/frontier signals. The negative field is a separate anti-overlap mechanism.
-
-### H-MAPPO-EARS-Safe
-
-`H-MAPPO-EARS-Safe` is a **MAPPO-assisted hierarchical option controller**, not a claim of a new MAPPO implementation. It treats the trained MAPPO checkpoint as one option inside an explicit hierarchy:
-
-1. safe return to base;
-2. EARS global relocation;
-3. negative-pheromone escape;
-4. Ant evidence exploitation;
-5. MAPPO local action when the observable state is suitable;
-6. Ant local exploration fallback.
-
-This avoids forcing MAPPO to relearn the low-level Ant heuristic that already generalizes well.
-
-## Existing v5 components retained
-
-### PRISM
-
-**PRISM — Probability-guided Region-Integrated Search with Memory** remains the explicit global-search comparison. It uses observable signed memory, normalized search utility, region allocation, and X / Plus / Star local search geometries. Pattern and parameter selection use validation only.
-
-### PRISM-Ant
-
-`PRISM-Ant-Safe` continuously fuses PRISM global allocation with Ant local search. v6 retains it because it is the direct predecessor to the event-driven EARS hypothesis.
-
-### SWAP
-
-**SWAP — Seeded World Alternate Protocol** keeps the same unseen real-city OSM geometry but generates deterministic seed-indexed hidden mission subsets. SWAP is post-selection only and cannot tune any model, PRISM pattern, EARS threshold, or pheromone parameter.
-
-## Experimental protocol
-
-| Split | Cities | Starting zones | May select a model? |
-|---|---|---|---|
-| Train | Vienna, London, Berlin | north-west, south-east, center | training only |
-| Validation | Amsterdam, Prague | west, east, north, south | **yes** |
-| Primary v6 test | San Francisco, Paris | north-east, south-west | **no** |
-| SWAP test | test cities with seed-indexed alternate mission views | test zones | **no** |
-
-Ground-truth mission coordinates and hidden priority labels are evaluator data. Policies may use sensed observations, uncertainty/frontiers, pheromones, visits, known constraints, battery, communication, and shared observable swarm state.
-
-## v6 pipeline
-
-```text
-prepare real OSM snapshots
-  ↓
-base PPO/GRPO training + robust validation checkpoints
-  ↓
-v5 coordination + teacher-distillation upgrade
-  ↓
-PRISM X / Plus / Star + PRISM-Ant validation selection
-  ↓
-EARS / EARS-NP / H-MAPPO-EARS train-shortlist + validation selection
-  ↓
-frozen primary held-out test
-  ↓
-SWAP multi-seed alternate-target stress test
-  ↓
-combined report
-```
-
-Run everything:
+The base calibration selects discrete controller parameters; it does not train a
+new neural network. Its output checkpoint is
+`results/publication-v9/training/checkpoints/ears_safe.json`. To evaluate that new
+checkpoint, use a new study directory:
 
 ```bash
-docker compose up --build pipeline
+docker compose run --rm --build ears-v9-publication python experiments/publication_ears_v9.py all --checkpoint results/publication-v9/training/checkpoints/ears_safe.json --output-root results/publication-v9-new
 ```
 
-## v7 publication-validation suite
+Real-city workflows require verified OSM geography and mission provenance. First-time
+map preparation may need network access. Frozen evaluations reuse their saved maps.
+Use each script's `--help` for configuration options and earlier experiment workflows.
 
-v7 does **not** train a new method. It freezes the v6 checkpoints and adds the evidence reviewers typically need before a publication claim.
+## Results and reproducibility
 
-### Expanded post-selection geography
+| Artifact | Purpose |
+| --- | --- |
+| `frozen/` | Study or probe specification, checkpoint, map snapshots, and hashes |
+| `episodes.sqlite` | Committed episode journal used for recovery |
+| `episodes.csv` | Raw paired outcomes, completion metrics, and timings |
+| `summary.csv`, `city_means.csv` | Aggregate and city-level results |
+| `contrasts.csv` | Mechanism comparisons and descriptive uncertainty |
+| `completion.json` | Mechanism-run completion status and output hashes |
+| `report.md` | Generated mechanism report |
 
-`configs/publication_protocol_v7.json` keeps the original train/validation cities unchanged and expands the evaluation-only test set to eight cities:
+The publication workflow additionally writes statistical tables, figures, LaTeX,
+and PDF/HTML reports under its `report/` directory. Preserve the complete output
+folder with its exact code revision. Source hashes normalize CRLF/LF where the
+original workflow specifies; the mechanism tools also record their own file hashes.
 
-- San Francisco and Paris (the original v6 held-out cities);
-- Barcelona and Rome (dense/irregular European street structure);
-- Manhattan/New York and Chicago (US grid-dominant urban structure);
-- Tokyo and Melbourne (additional geographically distinct urban layouts).
+Archived measurements are available in [`evidence/`](evidence/):
+[`validation-20261012/`](evidence/validation-20261012/) contains the historical
+selection record; [`review-20261014/`](evidence/review-20261014/) contains audit tables
+and the 256-episode mechanism pilot, including its raw journal and frozen inputs.
 
-These cities may not select or update EARS.
+**Research scope.** EARS-Info-v9 remains a research candidate; historical validation
+retained EARS-Safe-v7. The archived four-city comparisons are exploratory. Reused
+maps do not provide independent geographic confirmation, and periodic interventions
+are not matched to the event-driven method's accepted intervention budget. The
+simulator uses known grid geometry and shared state; communication dropout counters
+and zero observed incidents do not establish distributed or physical safety.
 
-### Paired and hierarchical statistics
+## Repository layout
 
-`experiments/analyze_publication_statistics_v7.py` pairs EARS and Ant on the same city, start zone, episode and seed, then reports:
+| Path | Contents |
+| --- | --- |
+| [`src/`](src/) | Controllers, city environment, safety monitor, training utilities, and metrics |
+| [`experiments/`](experiments/) | Calibration, evaluation, visualization, and report entry points |
+| [`tools/`](tools/) | Read-only evidence audit and resumable mechanism experiment |
+| [`configs/`](configs/) | City definitions and geographic protocols |
+| [`tests/`](tests/) | Unit and experiment-integrity tests |
+| [`evidence/`](evidence/) | Archived raw measurements and provenance |
+| [`docker/`](docker/) | Container build definition |
+| `data/cache/`, `results/` | Local map caches and generated experiment outputs |
 
-- paired bootstrap 95% confidence intervals;
-- a two-sided paired randomization/permutation p-value;
-- hierarchical bootstrap 95% intervals with episodes nested inside cities;
-- paired effect size and win fraction;
-- episode-level and across-city **mean ± standard deviation** tables.
+## Development
 
-### EARS mechanism ablations
-
-`experiments/test_ears_ablations_v7.py` uses the same frozen EARS checkpoint and evaluates:
-
-- full EARS;
-- stagnation-only triggering;
-- revisit-only triggering;
-- congestion-only triggering;
-- relocation with energy and battery-return awareness removed;
-- the unchanged `AntSwarmSafe` baseline.
-
-Trigger counts and Ant-vs-relocation fractions are reported per city so the paper can test the mechanism explanation rather than only the final score.
-
-### Operational-score sensitivity
-
-`experiments/score_sensitivity_v7.py` retains the published operational score as the primary metric, then perturbs component weights by ±25% and renormalizes them. It reports how often EARS still beats Ant and how the EARS-minus-Ant margin changes. This guards against a result that exists only for one hand-picked composite weighting.
-
-### Full publication SWAP
-
-The publication pipeline runs SWAP again on the expanded frozen test set. Multiple deterministic alternate hidden-target views are evaluated after all checkpoints are fixed.
-
-### Qualitative winner episode
-
-`experiments/visualize_winner_episode_v7.py` creates one reproducible frozen winner episode with:
-
-- `winner_episode.gif` — animated agent motion and detection progression;
-- `winner_visit_heatmap.png` — visit intensity / overlap;
-- `winner_trajectory_map.png` — static trajectories and detection order;
-- `detection_events.csv` and `summary.json`.
-
-Mission target markers in these figures are explicitly post-evaluation overlays; policies never receive hidden target coordinates.
-
-### Run the publication suite
-
-If v6 checkpoints already exist, they are reused. Otherwise the original v6 train/validation pipeline runs first and is frozen before the v7 evaluation starts.
+Python 3.12 or later is required for a native environment:
 
 ```bash
-docker compose up --build publication
+python -m venv .venv
 ```
 
-For a deterministic CI-sized synthetic smoke test:
+Activate it with `source .venv/bin/activate` on Linux/macOS or
+`.venv\Scripts\Activate.ps1` in PowerShell, then install the development dependencies:
 
 ```bash
-docker compose up --build publication-offline
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
 ```
 
-Final outputs are collected under:
-
-```text
-results/publication/test/
-results/publication/swap-test/
-results/publication/statistics/
-results/publication/ablations/
-results/publication/sensitivity/
-results/publication/visualization/
-results/publication/report.html
-```
-
-## Top-4 real-city visual demo
-
-After the frozen checkpoints exist, the four leading methods can be replayed side-by-side on identical **real OpenStreetMap-derived city twins**:
+Alternatively, run the test suite in Docker:
 
 ```bash
-docker compose up --build demo-top4
+docker compose run --rm --build unit-test
 ```
 
-The default is San Francisco. Select one or more held-out cities with `DEMO_CITIES`:
+## Citation and license
 
-```bash
-DEMO_CITIES="San Francisco,Barcelona,Tokyo,Rome" docker compose up --build demo-top4
-```
+Use GitHub's **Cite this repository** action or [`CITATION.cff`](CITATION.cff) when
+referencing this software. Include the commit and frozen study identifier for
+reported experiments.
 
-Or render all eight publication test cities:
-
-```bash
-docker compose up --build demo-top4-all-cities
-```
-
-The comparison covers `H-MAPPO-EARS-Safe`, `EARS-Safe`, `EARS-NP-Safe`, and `AntSwarmSafe`. For every method/city pair the demo creates an animated GIF, a PNG trajectory map, a PNG visit heat map, a PNG final snapshot, detection-event CSV, JSON metrics, and a polished HTML dashboard under `results/demo/top4-real-city/`.
-
-See [`docs/top4-real-city-demo.md`](docs/top4-real-city-demo.md) for configuration and output details. Mission targets shown in the visualizations remain post-evaluation overlays only.
-
-## Useful v6 outputs
-
-```text
-results/train/ears_candidate_history.csv
-results/train/ears_summary.csv
-results/train/ears_manifest.json
-results/train/checkpoints/ears_safe.json
-results/train/checkpoints/ears_np_safe.json
-results/train/checkpoints/h_mappo_ears_safe.json
-results/test/tables/overall_ranking.csv
-results/swap-test/tables/seed_ranking.csv
-results/swap-test/tables/overall_ranking.csv
-results/report.html
-```
-
-## Scientific interpretation
-
-`AntSwarmSafe` is intentionally left unchanged. EARS is successful only if the **frozen** event-driven variants improve the held-out/SWAP result without using test feedback—especially by lowering redundancy, energy, and distance while preserving or improving Ant-level target discovery.
-
-The v7 publication report adds an evidence gate, not a model-selection gate. Strong publication support requires consistent multi-city/SWAP behavior, paired and hierarchical confidence intervals, raw-metric agreement with the proposed mechanism, mechanism ablations, and score-weight robustness. The repository never forces EARS, PRISM, MAPPO, or any other method to win.
-
-## Experimental v8 topology-aware EARS (separate from published v7)
-
-A new route-aware controller and a gated variant have been added without
-modifying the v6/v7 algorithms or their selection checkpoints. The v8 benchmark
-compares AntSwarmSafe, original EARS, route-only EARS, and gated EARS on matched
-city episodes; it produces city-aware uncertainty, topology diagnostics,
-scalability and communication-dropout sweeps, and a fail-closed evidence report.
-
-**Development prototype, not an established performance improvement.** The
-existing eight-city results are development/diagnostic data for v8; a new
-six-city confirmation protocol must be frozen and run before updating paper
-performance claims.
-
-See [docs/EARS_V8.md](docs/EARS_V8.md) for all commands, integrity gates, and
-limitations.
-
-## Experimental v9 information routing
-
-v9 adds sensor-footprint information gain, persistent goal reservations, cached
-graph routes and retry backoff. Its validation-only selection compares four
-predefined candidates against unchanged v7 and Ant, and retains v7 if no candidate
-meets the declared score, discovery, safety and runtime gates. A large performance
-improvement is not assumed. Historical v7/v8 code and results remain unchanged.
-
-```bash
-docker compose run --rm --build ears-v9-select
-```
-
-Results are saved under a new `results/v9/select-<timestamp>/` directory. The
-runner prints the exact path and flushes raw episodes as they finish. See
-[docs/EARS_V9.md](docs/EARS_V9.md) for the full-grid diagnosis, explicit output
-paths, frozen-model evaluation commands and evidence limitations.
-
-## License and data
-
-Repository code is licensed under the project license. Real geographic snapshots are derived from OpenStreetMap and must retain **© OpenStreetMap contributors** attribution and applicable ODbL terms. Synthetic mode exists for deterministic CI/development and must not be presented as real-world evidence.
+Code is released under the [MIT License](LICENSE). Map snapshots are derived from
+**© OpenStreetMap contributors** and retain their separate
+[Open Database License and attribution requirements](https://www.openstreetmap.org/copyright).
+Per-map provenance is recorded with the frozen data.
