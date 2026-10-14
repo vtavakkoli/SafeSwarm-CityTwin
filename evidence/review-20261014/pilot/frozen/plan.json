@@ -1,0 +1,345 @@
+{
+  "agents_grid": [
+    4,
+    8
+  ],
+  "artifact_hashes": {
+    "ears_safe.json": "3023a2cb283206b9dfd0c0679bdfbb29aaad9e633b599c2470cd4b196bf326bf",
+    "map-0.json": "97e394039f2998038336963cd3cbe6ac769cb9e58c88b48a4acdc468262fe073",
+    "map-1.json": "d1078940700b5ed90155b438c5e4981ab9f2b5ce180dab995a4b183b3ea5ee85",
+    "map-2.json": "5d4bd932b050fd02f68f549f4e068fb0e19bff1e50bc6e3673e9ff75eac3eb95",
+    "map-3.json": "fa0060e15d28690ee4ee11fbdd34b2cd3f5c2c663b88bfa9cb29e6c73783e753"
+  },
+  "cities": [
+    "Zurich",
+    "Madrid",
+    "Lisbon",
+    "Helsinki"
+  ],
+  "dropout_grid": [
+    0.03
+  ],
+  "episodes": 4,
+  "evidence_status": "EXPLORATORY REUSED GEOGRAPHY; NOT CONFIRMATION OR MODEL SELECTION",
+  "expected_rows": 256,
+  "format": "ears-v9-mechanism-probe-v1",
+  "grid_size": 40,
+  "intervention_budget": "not matched; report requests, accepted routes, route steps and planning time",
+  "map_metadata": {
+    "Helsinki": {
+      "attribution": "\u00a9 OpenStreetMap contributors",
+      "cache_hit": true,
+      "cache_path": "data/cache/v9-five-city-shift7-v1/helsinki-finland-g40-r1400-5e4b95fff0.json",
+      "center_lat": 60.1666204,
+      "center_lon": 24.9435408,
+      "feature_count": 6752,
+      "grid_size": 40,
+      "license_url": "https://www.openstreetmap.org/copyright",
+      "mission_source": "openstreetmap",
+      "place_name": "Helsinki, Finland",
+      "radius_m": 1400,
+      "retrieved_utc": "2026-10-13T10:31:11.812778+00:00",
+      "source": "openstreetmap",
+      "source_osm_snapshot_sha256": "000138269033410aeb842b24aeba2375eb0720d034c9b4351f3613fb227a3a0c",
+      "target_projection_audit": {
+        "max_shift_grid_cells": 7,
+        "modifications": [],
+        "modified_targets": 0,
+        "original_target_cells_are_osm_derived": true,
+        "preprocessing_is_protocol_amendment": true
+      },
+      "target_projection_method": "publication-v9-accessible-osm-poi-grid-projection-v1"
+    },
+    "Lisbon": {
+      "attribution": "\u00a9 OpenStreetMap contributors",
+      "cache_hit": true,
+      "cache_path": "data/cache/v9-five-city-shift7-v1/lisbon-portugal-g40-r1400-8cbc623c33.json",
+      "center_lat": 38.7077507,
+      "center_lon": -9.1365919,
+      "feature_count": 11053,
+      "grid_size": 40,
+      "license_url": "https://www.openstreetmap.org/copyright",
+      "mission_source": "openstreetmap",
+      "place_name": "Lisbon, Portugal",
+      "radius_m": 1400,
+      "retrieved_utc": "2026-10-13T10:24:50.954973+00:00",
+      "source": "openstreetmap",
+      "source_osm_snapshot_sha256": "c2aea954fa7c55b9568b6108a75e1d27e15c3d75fa53ef901952b8998acf2999",
+      "target_projection_audit": {
+        "max_shift_grid_cells": 7,
+        "modifications": [
+          {
+            "grid_manhattan_shift": 6,
+            "original_cell": [
+              25,
+              25
+            ],
+            "priority": 0.75,
+            "projected_cell": [
+              25,
+              31
+            ]
+          },
+          {
+            "grid_manhattan_shift": 7,
+            "original_cell": [
+              26,
+              24
+            ],
+            "priority": 0.85,
+            "projected_cell": [
+              32,
+              23
+            ]
+          },
+          {
+            "grid_manhattan_shift": 5,
+            "original_cell": [
+              27,
+              25
+            ],
+            "priority": 0.75,
+            "projected_cell": [
+              32,
+              25
+            ]
+          },
+          {
+            "grid_manhattan_shift": 4,
+            "original_cell": [
+              27,
+              27
+            ],
+            "priority": 0.85,
+            "projected_cell": [
+              27,
+              31
+            ]
+          },
+          {
+            "grid_manhattan_shift": 2,
+            "original_cell": [
+              28,
+              29
+            ],
+            "priority": 0.75,
+            "projected_cell": [
+              28,
+              31
+            ]
+          },
+          {
+            "grid_manhattan_shift": 3,
+            "original_cell": [
+              29,
+              28
+            ],
+            "priority": 0.75,
+            "projected_cell": [
+              29,
+              31
+            ]
+          },
+          {
+            "grid_manhattan_shift": 3,
+            "original_cell": [
+              29,
+              29
+            ],
+            "priority": 0.75,
+            "projected_cell": [
+              30,
+              31
+            ]
+          }
+        ],
+        "modified_targets": 7,
+        "original_target_cells_are_osm_derived": true,
+        "preprocessing_is_protocol_amendment": true
+      },
+      "target_projection_method": "publication-v9-accessible-osm-poi-grid-projection-v1"
+    },
+    "Madrid": {
+      "attribution": "\u00a9 OpenStreetMap contributors",
+      "cache_hit": true,
+      "cache_path": "data/cache/v9-five-city-shift7-v1/madrid-spain-g40-r1400-e758db09e8.json",
+      "center_lat": 40.416782,
+      "center_lon": -3.703507,
+      "feature_count": 14226,
+      "grid_size": 40,
+      "license_url": "https://www.openstreetmap.org/copyright",
+      "mission_source": "openstreetmap",
+      "place_name": "Madrid, Spain",
+      "radius_m": 1400,
+      "retrieved_utc": "2026-10-13T10:20:42.259445+00:00",
+      "source": "openstreetmap",
+      "source_osm_snapshot_sha256": "7af17225745fa21795b91807233abcd0b4f16d9ab6f36d8cc8c839f255ed18e9",
+      "target_projection_audit": {
+        "max_shift_grid_cells": 7,
+        "modifications": [],
+        "modified_targets": 0,
+        "original_target_cells_are_osm_derived": true,
+        "preprocessing_is_protocol_amendment": true
+      },
+      "target_projection_method": "publication-v9-accessible-osm-poi-grid-projection-v1"
+    },
+    "Zurich": {
+      "attribution": "\u00a9 OpenStreetMap contributors",
+      "cache_hit": true,
+      "cache_path": "data/cache/v9-five-city-shift7-v1/zurich-switzerland-g40-r1400-229c6badc5.json",
+      "center_lat": 47.3744489,
+      "center_lon": 8.5410422,
+      "feature_count": 11974,
+      "grid_size": 40,
+      "license_url": "https://www.openstreetmap.org/copyright",
+      "mission_source": "openstreetmap",
+      "place_name": "Zurich, Switzerland",
+      "radius_m": 1400,
+      "retrieved_utc": "2026-10-13T10:19:45.236178+00:00",
+      "source": "openstreetmap",
+      "source_osm_snapshot_sha256": "eeff802ca382cd5ddce7466a3cd85ad5944e8bdf0cabcc65df70c4332bcea0a3",
+      "target_projection_audit": {
+        "max_shift_grid_cells": 7,
+        "modifications": [],
+        "modified_targets": 0,
+        "original_target_cells_are_osm_derived": true,
+        "preprocessing_is_protocol_amendment": true
+      },
+      "target_projection_method": "publication-v9-accessible-osm-poi-grid-projection-v1"
+    }
+  },
+  "maps": {
+    "Helsinki": "map-3.json",
+    "Lisbon": "map-2.json",
+    "Madrid": "map-1.json",
+    "Zurich": "map-0.json"
+  },
+  "max_steps": 160,
+  "methods": [
+    "EARS-Info-v9",
+    "EARS-Info-Local-v9",
+    "EARS-Info-Periodic16",
+    "EARS-Info-NoSensingReservations"
+  ],
+  "original_source_mismatches": [
+    "docker/Dockerfile"
+  ],
+  "panels": [
+    "mission_stop",
+    "fixed_budget"
+  ],
+  "periodic_steps": 16,
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.39",
+  "profile": "pilot",
+  "routing_config": {
+    "cache_fields": 96,
+    "coverage_weight": 0.35,
+    "enable_relocation": true,
+    "information_weight": 2.0,
+    "max_route_steps": 32,
+    "min_route_gain": 0.08,
+    "reserve_margin": 18.0,
+    "retry_steps": 5,
+    "route_slack": 4,
+    "travel_discount": 0.15
+  },
+  "seed": 7142026,
+  "software": {
+    "geopandas": null,
+    "matplotlib": "3.10.8",
+    "numpy": "2.3.5",
+    "osmnx": null,
+    "pandas": "2.2.3",
+    "python": "3.12.14",
+    "reportlab": "4.4.9",
+    "shapely": null
+  },
+  "source_episodes_sha256": "3f32f44b0fa60683c685cd57fe9a380cd2889d202ca6caaa7166df25169f475d",
+  "source_hashes": {
+    "docker/Dockerfile": "1991b5d6368c426b454b63f7719e0c35bbb9a6e34b76b6f774e68f82c40aa455",
+    "experiments/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "experiments/analyze_publication_statistics_v7.py": "906719962d7e97c8061d90a2f168833d2c6d00ae3c864d040f43e8a9f8d19348",
+    "experiments/benchmark_ears_v8.py": "0986554499ba2888d193ce770f357907fe5b33aed82ed7ec240a050eecbf6444",
+    "experiments/benchmark_ears_v9.py": "e7584d9c6f9f37ae1794f00d506970338eabae93649d70a922bf46b115504600",
+    "experiments/build_publication_report_v7.py": "ea54d67cfaeee06881e9880d9af76ff0dd39f9fd9c35f0152c18d0cd53833b7c",
+    "experiments/build_train_test_report.py": "bc3a59facb5c777aa5485e9389ff7a47968953af4309ecd763898211f390528f",
+    "experiments/demo_top4_real_city.py": "7406b2e7a35b86fb90c6e76821ce605b91273912c38e8305bfa1d6943ecc6b82",
+    "experiments/prepare_publication_v9_maps.py": "6a1410209fadf653745b2c7748ca8963669e7309518480a07e59c062866029b9",
+    "experiments/prepare_real_city_data.py": "21848b8f2a5d8d3b7342ab09c5f4fdb68aeaf6074e0b1c5ebe4b5422c15a60b6",
+    "experiments/publication_ears_v9.py": "33c8bbcda1f2b28ed1304e8f2449cdc77f6f745e8825200147bb6ec7a98dadb3",
+    "experiments/report_publication_v9.py": "1fa90112ca23cfd0ce63248cdb1b6a3b0da92858e364dac3332aa544a7db8405",
+    "experiments/run_city_benchmark.py": "39d9981855853efcf44c0264808f43aeb9fe8e0c3fda067bad03aea5d1beaf27",
+    "experiments/run_publication_pipeline_v7.py": "bf61748125a939334b8a467bc695a764ceebcf41110c9dd2c8283dac2c53e4ed",
+    "experiments/run_safety_experiment.py": "67b70caa4ea9c8463507ec36f7b7524a608766901702a0c1273ed67811243ed3",
+    "experiments/run_train_test_pipeline.py": "3e7b83d1fd87d7411d6c2b32a2327d44b11db3d88571aa5935117eb396a97b5a",
+    "experiments/score_sensitivity_v7.py": "97ad392c464bdd5874bc1450b4d5bea93c2cd6e2169d4c7efb8a9d961a34b675",
+    "experiments/test_ears_ablations_v7.py": "7f7a2cd5f4d2753cb131ef7596d5a6cbf213f0076b71dc0414f1d52c4c2937aa",
+    "experiments/test_real_city_policies.py": "c438af77ff028089167a9f49f8cde437e1ee523e12db0669e2408d42b14f13dd",
+    "experiments/test_real_city_policies_v5.py": "a0592640b8088d788cb20275528a7760be17bf63b8e7c036c6f325a21dd2dc3d",
+    "experiments/test_real_city_policies_v6.py": "193bcac846ce78b22afddbc4f33f9679dea97d2e58794a8d864bf171ed553657",
+    "experiments/test_swap_protocol.py": "eee5ab88660b77dcc2dca585a22404e23fac0b2bb58828c934a4fa6525ecaa47",
+    "experiments/train_ears_v6.py": "c021b37e8c48abd01b212cd591f7fd49695f363a1c8cd6fe0e755a3346f25374",
+    "experiments/train_prism_patterns.py": "a69b2e960ec7c54b560366c4df97c258b88c30eef903579aa2f336675f45acde",
+    "experiments/train_real_city_policies.py": "60c7b5f66ab1d3b5e028ae554263a243aa7ce620f8c367ab22af808407db4f76",
+    "experiments/train_real_city_policies_v3.py": "02e94b4c82be2afe9beb2da5a20decc626158c2a719b7f34962ae7470d1fb6d9",
+    "experiments/train_real_city_policies_v4.py": "53ef11856124c3657b935f00e4481f1918a4b7848cd066ecff42506b7939a82c",
+    "experiments/train_sparx_patterns.py": "0df759b2ab6ec9a6fbef5eb3855111a5ccf06c99c52034b8e3ae0bfa16c0e3f8",
+    "experiments/upgrade_ppo_coordination_v5.py": "ad0a712767de6b50cc31645d2045cc7f2245106173d59708ae1ef738b55ddc7d",
+    "experiments/validate_publication_v8.py": "1c9808de6162ad297f593e2226bb3988abee5ad656b37cbd479baed38647e963",
+    "experiments/visualize_winner_episode_v7.py": "66525743344d7e87e533dfe79938754f00698a4ac82aadcaaec4669f295a19ae",
+    "requirements-dev.txt": "179a4a6b3b6e71cc0fb95b6d05e6273b69709e3b4659164e2a2e0eef87fa54a8",
+    "requirements.txt": "128c114a6e9cc35bd17e70e7dd0968e8a278a30e5306c953dec0d94f55e8aa34",
+    "src/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/agents/__init__.py": "09150cb393053d2b34bf2181997fa9a5d591bf10f2a4be0a3c07b336d0cbaba7",
+    "src/agents/bio_swarm_agents.py": "25c7ae81e37d030c9de01e09357f209ba5ed758e06ac5fe52a6b61267f724392",
+    "src/agents/ears_ablations_v7.py": "3cf06340be808215a885bf5e12ee53242f809d533215ca8bf9a2de6c93a86350",
+    "src/agents/ears_v6.py": "7f173c100315324d1c2efb444a7ff0c3611b6a678fa3cf39f6e2b0313ce2dce7",
+    "src/agents/ears_v8.py": "2fe8bc032bdfb282fc21cd6b1e9d4dbc4ba8864c6dd7335df5b40c2e26889f96",
+    "src/agents/ears_v9.py": "1130d6470756e699891f50a33db5db0c4d041afa00c2e0e524eed7fbd10fe64a",
+    "src/agents/greedy_agent.py": "8f49d118d80b10be6a8e2e4617318d464f98b8aa20c5e60e2e479cfb02cba473",
+    "src/agents/grpo_memory_v2.py": "5a2641480a209733021e12102f5c2feac2fb106c570bbada4536c12b56d47020",
+    "src/agents/grpo_v3.py": "42cb4c01d75352f24182bbd237dcf9d10d5f882fca4f914678589cf00ab30fd3",
+    "src/agents/marl_baselines.py": "4ca4f5640609973c7c40dcae7eed8136ef12df620950a55286a6d98a5da554db",
+    "src/agents/observable_marl.py": "d880869ec438e454e83c651b0691b3bca8634975afb6c98815a4b688f272a1eb",
+    "src/agents/observable_utils.py": "21a46854c343df7787a9ca274243c85b5c48b15c5a76c5396eebe3467e5c93eb",
+    "src/agents/ppo_v3.py": "ce9113fdc7b4b9764dd4b39df37b800e8f73d075f0fdc8075df17d99d8af1163",
+    "src/agents/prism_ant.py": "7b340454cdc88f3d249cc475e097306f0c4d601e92e9e41b290972c5f8c4e5bf",
+    "src/agents/prism_pattern.py": "f4ca53e1f615b7970eb720c509932cc7f0889d4653d870949f8546e108016d59",
+    "src/agents/random_agent.py": "46045a8465bea7404f6d44e42431562df71b3102b15c9d818306a7b9e00ab767",
+    "src/agents/registry.py": "3aab3ea8d92c82ef09bbc19350ac3f95c0795280c87149911223c724a165a7a4",
+    "src/agents/safe_ppo_core.py": "e47d419287316c965a9a1c397946e1160281328c645070d666764acd081b3ad3",
+    "src/agents/safe_swarm_agent.py": "60281e707659412c65f64ea7ad5c505280b99e9288ff55014fafecc76e036271",
+    "src/agents/safety_filtered_agent.py": "a09f238fcb696e7b5a48bc976f0b576a2dd6aff47f6cb0335e477cf39542a859",
+    "src/agents/sparx_pattern.py": "0bbd2077de80dfbad5c13063c9ab44f7ca111ed6eee491d148516953440d6360",
+    "src/agents/trainable_policies.py": "fa630792d7bb0ad0bb4cf2cd40316adfe203fa6e468470c475929cbb01746ed6",
+    "src/environment/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/environment/city_twin.py": "f320c3bb2a38fc5dde6f60b6968c6e8176ad77f2853542a37fd9fcc1c7dbd7e8",
+    "src/environment/obstacles.py": "d834e5bd7eeb2753f67e11f0b927ba34837ffa58763b6cac384aeefd2b45b189",
+    "src/evaluation/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/evaluation/metrics.py": "2781ef8cf212536b21e1d37b64efa1e957fd0cfa45cf857fa54829dd552f1510",
+    "src/safety/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/safety/rules.py": "f83f2c9454682488abca4df2881bca02a6651fd130fa9ba607356bec78143153",
+    "src/safety/runtime_monitor.py": "ac2677d534cf1642c588b2a50d9afb301d0182a5bca655069bab69299a93da81",
+    "src/training/__init__.py": "bbb57b429c69c75bff85180f77b634d64ded0ef4211556e9d272bf9cc2e796c1",
+    "src/training/geography.py": "49e783c9e42ad1fc5625d09fcbe220bb67fea4f71e7436bb74edd4991f38aa5d",
+    "src/training/policy_learning.py": "9ef6be15c0d6259eca913e3f124e2e986da63b8f3e0014c459585fe3b13c24cc",
+    "src/training/swap_protocol.py": "3c8e108075c5077cc462a96aa169ed299c8da40641275d3f7fc6a3c44cfe28a8",
+    "src/training/teacher_bootstrap.py": "b9997f83dc74d0b8000c505636d3dd1a285766b39ceaa23e694bbef62287dba4",
+    "src/training/validation_selection.py": "11d29384406d6e1191d50861cb345401a0b885e7ceae526476dde9c1fce30780",
+    "src/visualization/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/visualization/plots.py": "0b636845c9fbdf13d87da55220b322be1dd427af0f47821b4926c4371264c4cd",
+    "tools/mechanism_probe_v9.py": "eef3a447d9e24ddd6d5b2b0de60d96eb44bdf1e3ae9639135602c4f349f44a54",
+    "tools/publication_readiness_v9.py": "a136931143c28e3b638732d9d2b20b65d24a760372da578d55d625881e63150c"
+  },
+  "source_study_sha256": "3cf5357758c10e0030d50c370c67cc0a601609f454338f28fc7a44bf6af0c733",
+  "thread_settings": {
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "uncertainty": "descriptive exact city tests; Holm across all comparisons",
+  "zones": [
+    "north_east",
+    "south_west"
+  ]
+}

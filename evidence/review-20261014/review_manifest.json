@@ -1,0 +1,15 @@
+{
+  "review_date": "2026-10-14",
+  "repository_base_sha": "dc1a9263dc5c262f3ae33f18d7b695bbb8070e77",
+  "inputs": {
+    "latex_IEEE_ACCESS_SR.zip": "52caeaaaa27f09aaee29445f3de3b82a6e56eb935c1df8451098ede53bae4e2c",
+    "publication-v9-sparse-filter-v2.zip": "f785ccfc45799257bd93745226d9b4c3d4d5410c19b66d9b1788baf848806686"
+  },
+  "review_scope": "Manuscript/source alignment, evidence integrity, statistics, mechanism pilot and official IEEE criteria; not a complete literature/novelty or acceptance certification.",
+  "original_rows_audited": 11200,
+  "new_pilot_rows_executed": 256,
+  "full_mechanism_matrix_executed": false,
+  "tests": "48 targeted tests passed; ruff check passed (see PR validation record).",
+  "historical_artifacts_changed": false,
+  "original_dockerfile_hash_mismatch_retained": true
+}
