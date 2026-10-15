@@ -1,0 +1,50 @@
+name: Eight-city Docker validation
+
+on:
+  pull_request:
+    paths:
+      - 'tools/eight_city_comparison.py'
+      - 'tools/report_eight_city_comparison.py'
+      - 'tests/test_eight_city_comparison.py'
+      - 'docker-compose.yaml'
+      - 'docker/Dockerfile'
+      - '.github/workflows/eight-city.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eight-city-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose and build the evaluation image
+        run: |
+          docker compose config --quiet
+          docker compose build ears-v9-eight-city
+      - name: Exercise interruption and resume in the actual container
+        run: |
+          docker compose run --rm ears-v9-eight-city python tools/eight_city_comparison.py smoke --profile core --output-root results/eight-city-ci --max-jobs 9
+          test ! -f results/eight-city-ci/completion.json
+          docker compose run --rm ears-v9-eight-city python tools/eight_city_comparison.py smoke --profile core --output-root results/eight-city-ci
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('results/eight-city-ci')
+          completion = json.loads((root / 'completion.json').read_text())
+          assert completion['smoke_only'] is True
+          assert completion['rows'] == completion['expected_rows'] == 180
+          assert (root / 'report/all_methods_original_setting.tex').is_file()
+          assert (root / 'report/all_methods.pdf').is_file()
+          assert Path('results/eight-city-ci.zip').is_file()
+          PY
+      - name: Upload synthetic software-check evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: eight-city-synthetic-software-check
+          path: results/eight-city-ci.zip
