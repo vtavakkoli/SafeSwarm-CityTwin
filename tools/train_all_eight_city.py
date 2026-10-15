@@ -161,9 +161,10 @@ def map_error(layers, error):
 
 
 def real_map(city, grid, seed, cache, original, offline):
-    """Refresh rejected copies once; never modify the shared source cache."""
+    """Reuse valid study maps, retry failed downloads, and preserve source caches."""
     target = comparison._cache_path(cache, city["place"], grid, city["radius_m"])
-    copied = original.is_file()
+    existing = target.is_file()
+    copied = not existing and original.is_file()
     if copied:
         shutil.copyfile(original, target)
     audit = {"source_cache_sha256": comparison.digest(original) if copied else None}
@@ -171,27 +172,40 @@ def real_map(city, grid, seed, cache, original, offline):
     def load(refresh=False):
         return comparison.load_real_city_layers(
             city["place"], grid, seed, radius_m=city["radius_m"], cache_dir=cache,
-            allow_network=not offline, force_refresh=refresh,
+            allow_network=refresh and not offline, force_refresh=refresh,
         )
 
     layers = None
     try:
         layers = load()
         comparison.validate_layers(layers, grid, city["name"], False)
-        return layers, "copied cache" if copied else "new OSM snapshot", audit
+        return layers, "copied cache" if copied else "resumed study cache", audit
     except (ValueError, KeyError, TypeError, OverflowError) as exc:
         reason = map_error(layers, exc)
-        audit["rejected_cache_reason"] = reason
+        if copied or existing:
+            audit["rejected_cache_reason"] = reason
+            print(f"[maps] {city['name']}: rejected cache ({reason})", flush=True)
 
-    if copied and not offline:
-        print(f"[maps] {city['name']}: rejected copied cache ({reason}); refreshing from OSM", flush=True)
-        layers = None
-        try:
-            layers = load(refresh=True)
-            comparison.validate_layers(layers, grid, city["name"], False)
-            return layers, "OSM refresh after rejected copied cache", audit
-        except (ValueError, KeyError, TypeError, OverflowError) as exc:
-            reason = map_error(layers, exc)
+    if not offline:
+        audit["download_failures"] = []
+        for attempt in range(1, 4):
+            print(f"[maps] {city['name']}: OSM download attempt {attempt}/3", flush=True)
+            layers = None
+            try:
+                layers = load(refresh=True)
+                comparison.validate_layers(layers, grid, city["name"], False)
+                origin = "OSM refresh after rejected copied cache" if copied else "new OSM snapshot"
+                return layers, origin, audit
+            except (ValueError, KeyError, TypeError, OverflowError) as exc:
+                reason = map_error(layers, exc)
+                audit["download_failures"].append(reason)
+            # Retry download failures, never repeatedly replace genuine but invalid data.
+            meta = layers.get("metadata", {}) if isinstance(layers, dict) else {}
+            if not meta.get("fallback_reason") or attempt == 3:
+                break
+            delay = 10 if attempt == 1 else 30
+            print(f"[maps] {city['name']}: {reason}; retrying in {delay}s", flush=True)
+            time.sleep(delay)
 
     advice = (
         "Offline mode cannot repair this cache. Supply a valid OSM snapshot or start a new online study."
@@ -209,15 +223,28 @@ def prepare(root, args, protocol):
     directory = root / "maps"
     if (directory / "stage.json").exists():
         return verify_stage(directory)
-    start_stage(directory)
+    directory.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     cache = directory / "cache"
-    cache.mkdir()
+    cache.mkdir(exist_ok=True)
+    progress_path = directory / "progress.json"
+    progress = json.loads(progress_path.read_text()) if progress_path.exists() else {}
     grid = 12 if args.smoke else 40
     manifest = []
     for i, city in enumerate(protocol["cities"]):
         target = comparison._cache_path(cache, city["place"], grid, city["radius_m"])
         original = comparison._cache_path(args.cache_dir, city["place"], grid, city["radius_m"])
+        if city["name"] in progress:
+            record = progress[city["name"]]
+            if (
+                record["cache_file"] != target.name or not target.is_file()
+                or comparison.digest(target) != record["sha256"]
+            ):
+                raise ValueError(f"Previously validated map changed: {city['name']}")
+            comparison.validate_layers(comparison.load_layer_cache(target), grid, city["name"], args.smoke)
+            manifest.append(record)
+            print(f"[maps] {city['name']} ({city['split']}): verified completed map", flush=True)
+            continue
         if args.smoke:
             layers = comparison.synthetic_city_layers(grid, 100 + i, city["place"])
             comparison.save_layer_cache(target, layers)
@@ -241,9 +268,24 @@ def prepare(root, args, protocol):
                 cache_validation=cache_validation,
             )
         )
+        progress[city["name"]] = manifest[-1]
+        comparison.atomic_json(progress_path, progress)
         print(f"[maps] {city['name']} ({city['split']}): {origin}", flush=True)
     comparison.atomic_json(directory / "manifest.json", manifest)
     return finish_stage(directory, started, smoke_only=args.smoke)
+
+
+def changed_fields(before, after, prefix=""):
+    if isinstance(before, dict) and isinstance(after, dict):
+        fields = []
+        for key in sorted(before.keys() | after.keys()):
+            name = f"{prefix}.{key}" if prefix else key
+            if key not in before or key not in after:
+                fields.append(name)
+            else:
+                fields.extend(changed_fields(before[key], after[key], name))
+        return fields
+    return [prefix] if before != after else []
 
 
 def initialize(root, args):
@@ -265,9 +307,12 @@ def initialize(root, args):
     if path.is_file():
         if comparison.digest(path) != (root / "pipeline.sha256").read_text().strip():
             raise ValueError("Pipeline specification changed")
-        if json.loads(path.read_text()) != config:
+        changes = changed_fields(json.loads(path.read_text()), config)
+        if changes:
             raise ValueError(
-                "Pipeline code, configuration, runtime or hardware changed; retain the original image"
+                "Pipeline code, configuration, runtime or hardware changed; retain the original image. "
+                "Changed fields: " + ", ".join(changes[:12]) +
+                (f" (and {len(changes) - 12} more)" if len(changes) > 12 else "")
             )
         for name, expected in config["source_hashes"].items():
             data = (root / "source" / name).read_bytes().replace(b"\r\n", b"\n")

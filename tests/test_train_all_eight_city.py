@@ -145,6 +145,11 @@ def map_setup(tmp_path):
     return city, valid, source, cache
 
 
+@pytest.fixture(autouse=True)
+def no_retry_wait(monkeypatch):
+    monkeypatch.setattr(pipeline.time, "sleep", lambda seconds: None)
+
+
 def test_valid_cache_does_not_download(map_setup, monkeypatch):
     city, valid, source, cache = map_setup
     comparison.save_layer_cache(source, valid)
@@ -220,3 +225,90 @@ def test_refresh_with_synthetic_targets_still_rejected(map_setup, monkeypatch):
     monkeypatch.setattr(obstacles, "_download_osm_layers", lambda *args: valid)
     with pytest.raises(ValueError, match="mission_source=synthetic_fallback"):
         pipeline.real_map(city, 40, 100, cache, source, False)
+
+
+def test_transient_502_retried_then_succeeds(map_setup, monkeypatch):
+    city, valid, source, cache = map_setup
+    calls, delays = [], []
+
+    def download(*args):
+        calls.append(args)
+        if len(calls) < 3:
+            raise RuntimeError("502 Bad Gateway")
+        return valid
+
+    monkeypatch.setattr(obstacles, "_download_osm_layers", download)
+    monkeypatch.setattr(pipeline.time, "sleep", delays.append)
+    layers, _, audit = pipeline.real_map(city, 40, 100, cache, source, False)
+    assert len(calls) == 3 and delays == [10, 30]
+    assert len(audit["download_failures"]) == 2
+    comparison.validate_layers(layers, 40, city["name"], False)
+
+
+def test_failed_city_preserves_completed_maps_and_resumes(map_setup, monkeypatch):
+    city, valid, source, cache = map_setup
+    import copy
+
+    rome = dict(city, name="Rome", place="Rome, Italy")
+    root = cache.parents[1]
+    args = pipeline.parser().parse_args(["--cache-dir", str(source.parent)])
+    calls = []
+    fail_rome = True
+
+    def download(place, *args):
+        calls.append(place)
+        if place == rome["place"] and fail_rome:
+            raise RuntimeError("502 Bad Gateway")
+        return copy.deepcopy(valid)
+
+    monkeypatch.setattr(obstacles, "_download_osm_layers", download)
+    with pytest.raises(ValueError, match="502 Bad Gateway"):
+        pipeline.prepare(root, args, {"cities": [city, rome]})
+    progress_path = root / "maps/progress.json"
+    first = json.loads(progress_path.read_text())[city["name"]]
+    assert calls == [city["place"], *([rome["place"]] * 3)]
+    assert not (root / "maps/stage.json").exists()
+    fail_rome = False
+    calls.clear()
+    pipeline.prepare(root, args, {"cities": [city, rome]})
+    assert calls == [rome["place"]]
+    assert json.loads(progress_path.read_text())[city["name"]] == first
+    pipeline.verify_stage(root / "maps")
+
+
+def test_partial_map_hash_tampering_is_rejected(map_setup, monkeypatch):
+    city, valid, source, cache = map_setup
+    root = cache.parents[1]
+    args = pipeline.parser().parse_args(["--cache-dir", str(source.parent)])
+    monkeypatch.setattr(obstacles, "_download_osm_layers", lambda *args: valid)
+    pipeline.prepare(root, args, {"cities": [city]})
+    (root / "maps/stage.json").unlink()  # Simulate interruption before stage completion.
+    target = comparison._cache_path(cache, city["place"], 40, 1500)
+    target.write_text("{}")
+    with pytest.raises(ValueError, match="Previously validated map changed"):
+        pipeline.prepare(root, args, {"cities": [city]})
+
+
+def test_valid_unjournaled_map_survives_restart(map_setup, monkeypatch):
+    city, valid, source, cache = map_setup
+    target = comparison._cache_path(cache, city["place"], 40, 1500)
+    comparison.save_layer_cache(target, valid)
+    comparison.save_layer_cache(source, comparison.synthetic_city_layers(40, 1))
+    before = target.read_bytes()
+
+    def forbidden(*args):
+        pytest.fail("A valid study map must not be overwritten or downloaded again")
+
+    monkeypatch.setattr(obstacles, "_download_osm_layers", forbidden)
+    _, origin, _ = pipeline.real_map(city, 40, 100, cache, source, False)
+    assert origin == "resumed study cache" and target.read_bytes() == before
+
+
+def test_configuration_error_names_exact_changed_fields(tmp_path, monkeypatch):
+    root = tmp_path / "study"
+    args = pipeline_args(root)
+    pipeline.initialize(root, args)
+    old_runtime = comparison.runtime()
+    monkeypatch.setattr(comparison, "runtime", lambda: dict(old_runtime, logical_cpus=9999))
+    with pytest.raises(ValueError, match=r"Changed fields: runtime.logical_cpus"):
+        pipeline.initialize(root, args)
