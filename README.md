@@ -90,6 +90,79 @@ The default audit and pilot output directories are `results/publication-v9-audit
 and `results/publication-v9-mechanism-pilot/`. The full command above writes to
 `results/publication-v9-mechanism-full/`. All three preserve the input study.
 
+### Eight-city comparison: all 30 implementations
+
+The new evaluator reruns the **26 original implementations and four EARS-Info
+variants** together in San Francisco, Paris, Barcelona, Rome, New York
+(Manhattan), Chicago, Tokyo, and Melbourne. It preserves the core controllers
+and simulator. Historical measurements are not pooled into this comparison.
+
+| Panel | Settings | Episodes in the full profile |
+| --- | --- | ---: |
+| Mission-stop | 8 cities × 30 methods × 4 team sizes × 4 dropout levels × 20 episodes | 76,800 |
+| Fixed-budget | Same matrix; mission-completion stopping disabled | 76,800 |
+| SWAP | 8 cities × 30 methods × 3 target views × 20 episodes; 8 robots, dropout 0.03 | 14,400 |
+| **Total** | **All methods at every setting within each panel** | **168,000** |
+
+Team sizes are 4/8/16/32 and dropout probabilities are 0/0.03/0.15/0.30.
+Each setting has 10 north-east and 10 south-west starts. The `core` profile is
+a separate 24,000-episode study at 8 robots and dropout 0.03.
+
+**Required inputs:** restore all 12 original selected checkpoint files to
+`results/train/checkpoints/`, the eight original OSM snapshots to `data/cache/`,
+and the previously evaluated candidate to
+`results/publication-v9-sparse-filter-v2/frozen/ears_safe.json`.
+The preflight lists missing files and rejects synthetic checkpoints/maps and a
+changed candidate. No automatic training or fallback occurs. Checkpoints record
+provenance but their training history still needs to be documented by the author.
+Use `--allow-download` only if deliberately starting a study with new map snapshots.
+
+Build once, check the inputs, then start the full study:
+
+```bash
+docker compose build ears-v9-eight-city
+docker compose run --rm ears-v9-eight-city python tools/eight_city_comparison.py preflight --profile full --output-root results/eight-city-v9-full
+docker compose run --rm ears-v9-eight-city
+```
+
+Repeat the last command to resume. **Retain the same image, code, machine, and
+output directory; do not rebuild during a study.** Evaluation runs serially and
+prints progress and a running time estimate. A journal commits every episode;
+partial studies cannot produce final rankings. The new directory is independent
+of existing publication and mechanism runs. For meaningful runtime comparisons,
+run the full study after other CPU-intensive experiments finish.
+
+To verify the software without the original inputs:
+
+```bash
+docker compose run --rm ears-v9-eight-city python tools/eight_city_comparison.py smoke --profile core --output-root results/eight-city-smoke
+```
+
+This uses untrained policies, one synthetic map, and 180 short episodes. Its
+outputs are labelled **software checks, not paper results**.
+
+The full study freezes source files, maps, checkpoints, package versions, thread
+settings, and hardware metadata. Every method receives the same observed-state
+interface, paired starts, and communication draws indexed by step and robot.
+A fixture audit checks that the interface preserves native actions and policy
+memory; it is not a formal proof of information isolation. Native safety and
+return logic remain different, with RandomAgent and GreedyAgent identified as
+unfiltered controls. QMIX, MADDPG, and MAT are explicitly labelled lightweight
+policy-style adaptations, not full reproductions of the published algorithms.
+
+Analysis uses equal city weights, a declared primary EARS-Info-v9 versus EARS-Safe
+score contrast at the original setting, exact city-level sign-flip tests, and
+Holm adjustment across secondary contrasts. City bootstrap intervals are
+descriptive. Reused geography makes this exploratory evidence. Unchanged or
+duplicate SWAP views remain in the all-city descriptive panel; a separate
+changed-view analysis reports which cities qualify. Targets are never added or
+projected to improve results.
+
+On completion, `results/eight-city-v9-full.zip` contains the frozen inputs, raw
+journal, metrics, integrity hashes, and `report/` with all-method tables, LaTeX,
+PDF/PNG figures, and an HTML report. The report does not certify publication
+readiness or automatically declare the candidate a winner.
+
 ### Additional workflows
 
 | Workflow | Command | Prerequisite |
@@ -147,7 +220,7 @@ and zero observed incidents do not establish distributed or physical safety.
 | --- | --- |
 | [`src/`](src/) | Controllers, city environment, safety monitor, training utilities, and metrics |
 | [`experiments/`](experiments/) | Calibration, evaluation, visualization, and report entry points |
-| [`tools/`](tools/) | Read-only evidence audit and resumable mechanism experiment |
+| [`tools/`](tools/) | Evidence audit, resumable mechanism and eight-city comparisons |
 | [`configs/`](configs/) | City definitions and geographic protocols |
 | [`tests/`](tests/) | Unit and experiment-integrity tests |
 | [`evidence/`](evidence/) | Archived raw measurements and provenance |

@@ -241,3 +241,12 @@ services:
       OPENBLAS_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
     command: ["python", "tools/mechanism_probe_v9.py", "--study-root", "${EARS_REVIEW_SOURCE:-results/publication-v9-sparse-filter-v2}", "--output-root", "${EARS_PROBE_ROOT:-results/publication-v9-mechanism-pilot}", "--profile", "${EARS_PROBE_PROFILE:-pilot}"]
+
+  ears-v9-eight-city:
+    <<: *benchmark-common
+    image: safeswarm-eight-city:local
+    environment:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    command: ["python", "tools/eight_city_comparison.py", "run", "--profile", "full", "--output-root", "results/eight-city-v9-full"]
