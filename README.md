@@ -73,24 +73,30 @@ the newly selected EARS-Safe checkpoint and fixed routing settings. The eight te
 cities never select checkpoints. Matching evaluation scenarios does not establish
 equal training budgets or faithful external SOTA implementations.
 
-Map preparation validates copied caches before training. An invalid cached map
-(including missing OSM target provenance) is fetched again once when online;
-the shared `data/cache/` file is preserved. The replacement must pass the same
-strict checks. Download failures report their underlying reason and stop the
-study without accepting synthetic fallback. Offline runs require valid caches.
+Map preparation validates copied caches before training. Invalid caches
+(including missing OSM target provenance) are refreshed online. Download failures
+are retried up to three attempts, with 10- and 30-second delays. Every accepted
+city is immediately recorded with its cache hash in `maps/progress.json`; reruns
+verify and reuse these maps instead of downloading them again. Changed recorded
+maps are rejected. The source cache is preserved, and replacements must pass the
+same strict checks. Exhausted retries report the download error and stop before
+training, without accepting synthetic fallback. Offline runs never download.
 
-If an older version stopped during map preparation with `genuine OSM geometry AND
-targets required`, update and rebuild, then use a **new output root** because the
-previous study pins its original code:
+If the previous `eight-city-publication-v2` run stopped on an OSM error such as
+`502 Bad Gateway`, update and rebuild, then use a **new output root** because the
+previous study pins its original code. Reuse the maps it already downloaded by
+passing that study's cache as a read-only source:
 
 ```bash
 git pull --ff-only
 docker compose build ears-v9-train-all
-docker compose run --rm ears-v9-train-all python tools/train_all_eight_city.py --profile full --output-root results/eight-city-publication-v2
+docker compose run --rm ears-v9-train-all python tools/train_all_eight_city.py --profile full --cache-dir results/eight-city-publication-v2/maps/cache --output-root results/eight-city-publication-v3
 ```
 
-Keep the old directory. For this new run, resume with the same last command,
-including `--output-root results/eight-city-publication-v2`, without rebuilding.
+Keep the old directory. For this new run, resume with the exact same last command,
+including both `--cache-dir` and `--output-root`, without rebuilding. If your old
+study has another name, substitute its map-cache path. Configuration mismatch
+errors list the specific changed fields; do not edit the frozen pipeline files.
 
 **Resume:** repeat only `docker compose run --rm ears-v9-train-all`, without rebuilding
 or changing machines. Completed stages are verified and skipped. An interrupted
