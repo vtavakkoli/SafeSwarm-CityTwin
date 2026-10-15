@@ -190,6 +190,7 @@ def test_resume_and_complete_report(completed_smoke):
     summary = pd.read_csv(root / "report/summary.csv")
     assert set(summary.strategy) == set(study.METHODS)
     assert "NOT PAPER RESULTS" in (root / "report/index.html").read_text()
+    assert "NOT PAPER RESULTS" in (root / "report/all_methods_original_setting.tex").read_text()
 
 
 def test_analysis_rejects_missing_pairs_and_unpaired_draws(completed_smoke):

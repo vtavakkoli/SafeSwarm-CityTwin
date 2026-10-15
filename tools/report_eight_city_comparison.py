@@ -41,7 +41,7 @@ METRICS = [
 ]
 
 
-def latex_table(frame):
+def latex_table(frame, smoke=False):
     """Standalone table fragment without an optional pandas/Jinja2 dependency."""
     escapes = {"\\": r"\textbackslash{}", "_": r"\_", "&": r"\&", "%": r"\%", "#": r"\#"}
 
@@ -49,10 +49,15 @@ def latex_table(frame):
         value = f"{value:.4f}" if isinstance(value, float) else str(value)
         return "".join(escapes.get(char, char) for char in value)
 
+    caption = (
+        "SYNTHETIC SOFTWARE CHECK; NOT PAPER RESULTS."
+        if smoke
+        else "All-method comparison at the original setting; equal-city means."
+    )
     lines = [
         r"% Requires booktabs and graphicx. Synthetic smoke outputs are not paper evidence.",
         r"\begin{table*}[t]\centering",
-        r"\caption{All-method comparison at the original setting; equal-city means.}",
+        r"\caption{" + caption + "}",
         r"\resizebox{\textwidth}{!}{\begin{tabular}{lrrrrrrr}\toprule",
         r"Method & $J$ & Discovery & Coverage & Energy & Runtime (s) & Completion & Incidents \\",
         r"\midrule",
@@ -167,7 +172,7 @@ def _report(root):
             "actual_safety_incidents",
         ]
     ]
-    (out / "all_methods_original_setting.tex").write_text(latex_table(display))
+    (out / "all_methods_original_setting.tex").write_text(latex_table(display, plan["smoke_only"]))
     # Always show every method; unfiltered controls remain visibly identified.
     colors = [
         "#007D77" if m == FULL else "#C69437" if m in ["RandomAgent", "GreedyAgent"] else "#758DA7"
@@ -175,6 +180,8 @@ def _report(root):
     ]
     plt.rcParams.update({"font.size": 9, "pdf.fonttype": 42})
     fig, ax = plt.subplots(figsize=(9, 9), layout="constrained")
+    if plan["smoke_only"]:
+        fig.suptitle("SYNTHETIC SOFTWARE CHECK — NOT PAPER RESULTS", color="#BA544D", fontsize=11)
     ax.barh(selected.strategy, selected.operational_score, color=colors)
     ax.invert_yaxis()
     ax.set(
@@ -187,6 +194,8 @@ def _report(root):
         index="city", columns="strategy", values="operational_score"
     )
     fig, ax = plt.subplots(figsize=(8, 4), layout="constrained")
+    if plan["smoke_only"]:
+        fig.suptitle("SYNTHETIC SOFTWARE CHECK — NOT PAPER RESULTS", color="#BA544D", fontsize=11)
     delta = c[FULL] - c["EARS-Safe"]
     ax.barh(delta.index, delta, color=["#007D77" if v >= 0 else "#BA544D" for v in delta])
     ax.axvline(0, color="black", lw=0.8)
