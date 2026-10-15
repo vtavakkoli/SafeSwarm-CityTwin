@@ -151,6 +151,60 @@ def execute(cmd, log):
             raise
 
 
+def map_error(layers, error):
+    meta = layers.get("metadata", {}) if isinstance(layers, dict) else {}
+    return (
+        f"{error}; source={meta.get('source', 'missing')}, "
+        f"mission_source={meta.get('mission_source', 'missing')}, "
+        f"fallback_reason={meta.get('fallback_reason', 'none reported')}"
+    )
+
+
+def real_map(city, grid, seed, cache, original, offline):
+    """Refresh rejected copies once; never modify the shared source cache."""
+    target = comparison._cache_path(cache, city["place"], grid, city["radius_m"])
+    copied = original.is_file()
+    if copied:
+        shutil.copyfile(original, target)
+    audit = {"source_cache_sha256": comparison.digest(original) if copied else None}
+
+    def load(refresh=False):
+        return comparison.load_real_city_layers(
+            city["place"], grid, seed, radius_m=city["radius_m"], cache_dir=cache,
+            allow_network=not offline, force_refresh=refresh,
+        )
+
+    layers = None
+    try:
+        layers = load()
+        comparison.validate_layers(layers, grid, city["name"], False)
+        return layers, "copied cache" if copied else "new OSM snapshot", audit
+    except (ValueError, KeyError, TypeError, OverflowError) as exc:
+        reason = map_error(layers, exc)
+        audit["rejected_cache_reason"] = reason
+
+    if copied and not offline:
+        print(f"[maps] {city['name']}: rejected copied cache ({reason}); refreshing from OSM", flush=True)
+        layers = None
+        try:
+            layers = load(refresh=True)
+            comparison.validate_layers(layers, grid, city["name"], False)
+            return layers, "OSM refresh after rejected copied cache", audit
+        except (ValueError, KeyError, TypeError, OverflowError) as exc:
+            reason = map_error(layers, exc)
+
+    advice = (
+        "Offline mode cannot repair this cache. Supply a valid OSM snapshot or start a new online study."
+        if offline else
+        "Check the download/geocoder/Overpass error above and network access, then rerun the same command."
+    )
+    raise ValueError(
+        f"{city['name']}: no valid OSM snapshot available. {reason}. "
+        f"Source cache: {original}. Study cache: {target}. {advice} "
+        "Training has not started; no synthetic data accepted and the source cache is unchanged."
+    )
+
+
 def prepare(root, args, protocol):
     directory = root / "maps"
     if (directory / "stage.json").exists():
@@ -168,18 +222,11 @@ def prepare(root, args, protocol):
             layers = comparison.synthetic_city_layers(grid, 100 + i, city["place"])
             comparison.save_layer_cache(target, layers)
             origin = "synthetic software check"
+            cache_validation = {}
         else:
-            if original.is_file():
-                shutil.copyfile(original, target)
-            layers = comparison.load_real_city_layers(
-                city["place"],
-                grid,
-                100 + i,
-                radius_m=city["radius_m"],
-                cache_dir=cache,
-                allow_network=not args.offline,
+            layers, origin, cache_validation = real_map(
+                city, grid, 100 + i, cache, original, args.offline,
             )
-            origin = "copied cache" if original.is_file() else "new OSM snapshot"
         comparison.validate_layers(layers, grid, city["name"], args.smoke)
         if not target.is_file():
             raise ValueError(f"No genuine cached map saved for {city['name']}")
@@ -191,6 +238,7 @@ def prepare(root, args, protocol):
                 cache_file=target.name,
                 sha256=comparison.digest(target),
                 metadata=layers["metadata"],
+                cache_validation=cache_validation,
             )
         )
         print(f"[maps] {city['name']} ({city['split']}): {origin}", flush=True)

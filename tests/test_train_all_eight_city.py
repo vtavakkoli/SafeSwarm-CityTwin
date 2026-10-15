@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from src.environment import obstacles
 from tools import eight_city_comparison as comparison
 from tools import train_all_eight_city as pipeline
 
@@ -127,3 +128,95 @@ def test_resume_configuration_cannot_change(tmp_path):
     args.profile = "full"
     with pytest.raises(ValueError, match="configuration"):
         pipeline.initialize(root, args)
+
+
+@pytest.fixture
+def map_setup(tmp_path):
+    city = {"name": "San Francisco", "place": "San Francisco, USA", "radius_m": 1500, "split": "test"}
+    # Minimal mocked OSM response; these fixtures are not research data.
+    valid = dict(
+        obstacles={(2, 2)}, restricted_zones=set(), mission_zones={(1, 1)},
+        base_stations={(0, 0)}, priority_cells={(1, 1): 1.0},
+        metadata={"source": "openstreetmap", "mission_source": "openstreetmap"},
+    )
+    source = comparison._cache_path(tmp_path / "shared", city["place"], 40, 1500)
+    cache = tmp_path / "study/maps/cache"
+    cache.mkdir(parents=True)
+    return city, valid, source, cache
+
+
+def test_valid_cache_does_not_download(map_setup, monkeypatch):
+    city, valid, source, cache = map_setup
+    comparison.save_layer_cache(source, valid)
+
+    def forbidden(*args):
+        pytest.fail("Valid cached map must not be refreshed")
+
+    monkeypatch.setattr(obstacles, "_download_osm_layers", forbidden)
+    layers, origin, audit = pipeline.real_map(city, 40, 100, cache, source, False)
+    assert layers["mission_zones"] == {(1, 1)} and origin == "copied cache"
+    assert audit["source_cache_sha256"] == comparison.digest(source)
+
+
+@pytest.mark.parametrize("invalid", ["synthetic", "missing_target_provenance", "corrupt_json"])
+def test_rejected_cache_refreshes_without_touching_source(map_setup, monkeypatch, invalid):
+    city, valid, source, cache = map_setup
+    bad = comparison.synthetic_city_layers(40, 1)
+    if invalid == "missing_target_provenance":
+        bad["metadata"]["source"] = "openstreetmap"
+    comparison.save_layer_cache(source, bad)
+    if invalid == "corrupt_json":
+        source.write_text("{broken")
+    original = source.read_bytes()
+    calls = []
+
+    def download(*args):
+        calls.append(args)
+        return valid
+
+    monkeypatch.setattr(obstacles, "_download_osm_layers", download)
+    layers, origin, audit = pipeline.real_map(city, 40, 100, cache, source, False)
+    assert len(calls) == 1 and layers["metadata"]["mission_source"] == "openstreetmap"
+    assert origin == "OSM refresh after rejected copied cache"
+    assert audit["rejected_cache_reason"] and source.read_bytes() == original
+    target = comparison._cache_path(cache, city["place"], 40, 1500)
+    comparison.validate_layers(obstacles.load_layer_cache(target), 40, city["name"], False)
+
+
+def test_invalid_offline_cache_fails_without_network(map_setup, monkeypatch):
+    city, _, source, cache = map_setup
+    comparison.save_layer_cache(source, comparison.synthetic_city_layers(40, 1))
+
+    def forbidden(*args):
+        pytest.fail("Offline mode must never download")
+
+    monkeypatch.setattr(obstacles, "_download_osm_layers", forbidden)
+    with pytest.raises(ValueError, match="Offline mode cannot repair"):
+        pipeline.real_map(city, 40, 100, cache, source, True)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_download_failure_reports_reason_and_does_not_complete_maps(map_setup, monkeypatch, cached):
+    city, _, source, cache = map_setup
+    if cached:
+        comparison.save_layer_cache(source, comparison.synthetic_city_layers(40, 1))
+
+    def failed(*args):
+        raise RuntimeError("Overpass fixture timeout")
+
+    monkeypatch.setattr(obstacles, "_download_osm_layers", failed)
+    root = cache.parents[1]
+    args = pipeline.parser().parse_args(["--cache-dir", str(source.parent)])
+    with pytest.raises(ValueError, match="Overpass fixture timeout"):
+        pipeline.prepare(root, args, {"cities": [city]})
+    assert not (root / "maps/stage.json").exists()
+    assert not (root / "maps/manifest.json").exists()
+
+
+def test_refresh_with_synthetic_targets_still_rejected(map_setup, monkeypatch):
+    city, valid, source, cache = map_setup
+    comparison.save_layer_cache(source, comparison.synthetic_city_layers(40, 1))
+    valid["metadata"]["mission_source"] = "synthetic_fallback"
+    monkeypatch.setattr(obstacles, "_download_osm_layers", lambda *args: valid)
+    with pytest.raises(ValueError, match="mission_source=synthetic_fallback"):
+        pipeline.real_map(city, 40, 100, cache, source, False)
