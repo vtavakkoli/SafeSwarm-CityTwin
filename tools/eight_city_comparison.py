@@ -405,6 +405,47 @@ def create_smoke_checkpoints(root):
     )
 
 
+def candidate_provenance(args, model_dir, candidate, smoke):
+    """Keep historical replication strict; new training requires recorded provenance."""
+    if args.candidate_mode == "historical":
+        if not smoke and (not candidate.is_file() or digest(candidate) != EXPECTED_CANDIDATE):
+            actual = digest(candidate) if candidate.is_file() else "missing"
+            raise ValueError(
+                f"Historical candidate {candidate}: {actual}; expected {EXPECTED_CANDIDATE}. "
+                "Restore the original archive, or start a NEW training study with "
+                "docker compose run --rm ears-v9-train-all. See README."
+            )
+        return {"mode": "historical", "expected_sha256": EXPECTED_CANDIDATE}
+    if not args.training_manifest:
+        raise ValueError("Retrained evaluation requires --training-manifest")
+    path = Path(args.training_manifest).resolve()
+    record = json.loads(path.read_text())
+    protocol = load_protocol(ROOT / "configs/publication_protocol_v7.json")
+    if (
+        record.get("format") != "eight-city-training-v1"
+        or record.get("status") != "complete"
+        or record.get("smoke_only") != smoke
+        or record.get("protocol") != protocol
+        or record.get("source_hashes") != source_hashes()
+        or record.get("runtime") != runtime()
+    ):
+        raise ValueError("Training provenance/scope/environment does not match this evaluation")
+    expected_stages = {"learn", "coordinate", "prism", "ears"}
+    if set(record.get("stages", {})) != expected_stages:
+        raise ValueError("Training provenance lacks completed stages")
+    for city in protocol["cities"]:
+        cache = _cache_path(args.cache_dir, city["place"], 12 if smoke else 40, city["radius_m"])
+        expected = record.get("map_stage", {}).get("files", {}).get("cache/" + cache.name)
+        if not cache.is_file() or digest(cache) != expected:
+            raise ValueError(f"Map changed or absent since training preparation: {city['name']}")
+    hashes = {name: digest(model_dir / name) for name in CHECKPOINTS}
+    if hashes != record.get("checkpoint_hashes"):
+        raise ValueError("Retrained checkpoints changed since selection")
+    if digest(candidate) != hashes["ears_safe.json"] or digest(candidate) != record.get("candidate_sha256"):
+        raise ValueError("Retrained candidate must share the selected EARS-Safe checkpoint")
+    return {"mode": "retrained", "manifest_sha256": digest(path), "training": record}
+
+
 def freeze(args):
     out = Path(args.output_root).resolve()
     frozen = out / "frozen"
@@ -412,6 +453,8 @@ def freeze(args):
         plan = verify(out)
         if plan["profile"] != args.profile or plan["smoke_only"] != (args.command == "smoke"):
             raise ValueError("Resume profile differs; use the original command/root")
+        if plan.get("candidate_provenance", {}).get("mode", "historical") != args.candidate_mode:
+            raise ValueError("Resume candidate mode differs; use the original command/root")
         return plan
     if out.exists() and any(out.iterdir()):
         raise ValueError("Output directory is not empty and has no frozen plan; use a new root")
@@ -421,10 +464,10 @@ def freeze(args):
     for source in [model_dir, candidate.parent, Path(args.cache_dir).resolve()]:
         if out == source or out in source.parents or source in out.parents:
             raise ValueError("Output root must be separate from checkpoints, candidate, and cache")
+    if not smoke or args.candidate_mode == "retrained":
+        check_checkpoints(model_dir, smoke=smoke)
+    provenance = candidate_provenance(args, model_dir, candidate, smoke)
     if not smoke:
-        check_checkpoints(model_dir)
-        if not candidate.is_file() or digest(candidate) != EXPECTED_CANDIDATE:
-            raise ValueError("Latest evaluated candidate checkpoint missing or changed: " + str(candidate))
         if any(v != "1" for v in runtime()["threads"].values()):
             raise ValueError(
                 "Set OMP_NUM_THREADS, OPENBLAS_NUM_THREADS, MKL_NUM_THREADS to 1 (Compose does this)"
@@ -441,7 +484,7 @@ def freeze(args):
     # Acquire and validate every map before creating an immutable study.
     maps = []
     for ci, city in enumerate(cities):
-        if smoke:
+        if smoke and args.candidate_mode == "historical":
             layers = synthetic_city_layers(grid, 100 + ci, city["place"])
         else:
             cache = _cache_path(args.cache_dir, city["place"], grid, city["radius_m"])
@@ -465,7 +508,7 @@ def freeze(args):
     staging.mkdir()
     try:
         cp = staging / "checkpoints"
-        if smoke:
+        if smoke and args.candidate_mode == "historical":
             create_smoke_checkpoints(cp)
             shutil.copyfile(cp / "ears_safe.json", staging / "candidate.json")
         else:
@@ -473,6 +516,7 @@ def freeze(args):
             for name in CHECKPOINTS:
                 shutil.copyfile(model_dir / name, cp / name)
             shutil.copyfile(candidate, staging / "candidate.json")
+        atomic_json(staging / "candidate_provenance.json", provenance)
         check_checkpoints(cp, smoke)
         audit, views = [], []
         for ci, (city, layers) in enumerate(zip(cities, maps, strict=True)):
@@ -543,6 +587,7 @@ def freeze(args):
             execution="serial; rotate method order; no fitting or policy selection",
             source_model_dir=str(model_dir),
             source_candidate=str(candidate),
+            candidate_provenance=provenance,
         )
         plan["expected_rows"] = sum(1 for _ in jobs(plan))
         # Archive the exact source bytes, Dockerfile, requirements, and loaded environment.
@@ -780,6 +825,8 @@ def parser():
     )
     p.add_argument("--output-root", default="results/eight-city-v9-full")
     p.add_argument("--model-dir", default="results/train/checkpoints")
+    p.add_argument("--candidate-mode", choices=["historical", "retrained"], default="historical")
+    p.add_argument("--training-manifest", help="Completed training provenance for a NEW retrained study")
     p.add_argument(
         "--candidate-checkpoint", default="results/publication-v9-sparse-filter-v2/frozen/ears_safe.json"
     )

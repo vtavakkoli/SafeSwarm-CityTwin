@@ -5,6 +5,9 @@ on:
     paths:
       - 'tools/eight_city_comparison.py'
       - 'tools/report_eight_city_comparison.py'
+      - 'tools/train_all_eight_city.py'
+      - 'tools/publication_report_eight_city.py'
+      - 'tests/test_train_all_eight_city.py'
       - 'tests/test_eight_city_comparison.py'
       - 'docker-compose.yaml'
       - 'docker/Dockerfile'
@@ -48,3 +51,30 @@ jobs:
         with:
           name: eight-city-synthetic-software-check
           path: results/eight-city-ci.zip
+      - name: Train all stages and resume into the comprehensive report
+        run: |
+          docker compose build ears-v9-train-all
+          docker compose run --rm ears-v9-train-all python tools/train_all_eight_city.py --smoke --profile core --output-root results/eight-city-train-ci --stop-after learn
+          docker compose run --rm ears-v9-train-all python tools/train_all_eight_city.py --smoke --profile core --output-root results/eight-city-train-ci --max-evaluation-jobs 9
+          test ! -f results/eight-city-train-ci/completion.json
+          docker compose run --rm ears-v9-train-all python tools/train_all_eight_city.py --smoke --profile core --output-root results/eight-city-train-ci
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('results/eight-city-train-ci')
+          done = json.loads((root / 'completion.json').read_text())
+          training = json.loads((root / 'training_manifest.json').read_text())
+          plan = json.loads((root / 'evaluation/frozen/plan.json').read_text())
+          assert done['smoke_only'] and done['evaluation']['rows'] == 180
+          assert set(training['stages']) == {'learn', 'coordinate', 'prism', 'ears'}
+          assert plan['candidate_provenance']['mode'] == 'retrained'
+          assert plan['candidate_provenance']['training'] == training
+          assert (root / 'evaluation/report/publication_report.pdf').is_file()
+          assert (root / 'evaluation/report/results_section.tex').is_file()
+          assert Path('results/eight-city-train-ci.zip').is_file()
+          PY
+      - name: Upload full synthetic training and reporting check
+        uses: actions/upload-artifact@v4
+        with:
+          name: train-all-synthetic-software-check
+          path: results/eight-city-train-ci.zip

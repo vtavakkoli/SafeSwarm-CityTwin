@@ -250,3 +250,12 @@ services:
       OPENBLAS_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
     command: ["python", "tools/eight_city_comparison.py", "run", "--profile", "full", "--output-root", "results/eight-city-v9-full"]
+
+  ears-v9-train-all:
+    <<: *benchmark-common
+    image: safeswarm-publication:local
+    environment:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    command: ["python", "tools/train_all_eight_city.py", "--profile", "full", "--output-root", "results/eight-city-publication"]

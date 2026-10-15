@@ -40,6 +40,71 @@ All commands below run from the repository root. Docker mounts `results/` and
 
 ## Experiments
 
+### Train, test, and report everything
+
+For a **new study without the previous candidate archive**, run from the repository
+root (the same commands work in Windows Command Prompt and PowerShell):
+
+```bash
+git pull --ff-only
+docker compose build ears-v9-train-all
+docker compose run --rm ears-v9-train-all
+```
+
+This single run prepares maps, trains/selects all supported models, evaluates all
+30 implementations on the original eight cities, and creates the comprehensive
+publication evidence report. It does not require
+`results/publication-v9-sparse-filter-v2/frozen/ears_safe.json` and does not modify
+previous studies or `results/train/checkpoints/`.
+
+| Stage | Work performed |
+| --- | --- |
+| Geography | Copy available OSM caches; download missing snapshots into the new study; reject synthetic fallback |
+| Learning | Train GRPO, IPPO, MAPPO and HAPPO on Vienna/London/Berlin; select on Amsterdam/Prague |
+| Coordination | Run the existing teacher-assisted coordination upgrade with validation gating |
+| PRISM | Select X/Plus/Star patterns, the preferred pattern, and PRISM-Ant fusion |
+| EARS | Select EARS, negative-pheromone and hierarchical MAPPO/EARS configurations |
+| Frozen evaluation | Run all 26 original implementations plus four EARS-Info variants: 168,000 episodes |
+| Reporting | Generate PDF/HTML/Markdown reports, LaTeX results text/tables, figures, full CSVs, and a reproducibility ZIP |
+
+Fixed heuristics are evaluated as fixed methods; they have no learned weights.
+GRPO ablations derive from the trained GRPO checkpoint. All four v9 variants share
+the newly selected EARS-Safe checkpoint and fixed routing settings. The eight test
+cities never select checkpoints. Matching evaluation scenarios does not establish
+equal training budgets or faithful external SOTA implementations.
+
+**Resume:** repeat only `docker compose run --rm ears-v9-train-all`, without rebuilding
+or changing machines. Completed stages are verified and skipped. An interrupted
+training stage is preserved under `attempts/` and restarted from the preceding
+completed stage; optimizer-step resumption is not supported. Testing resumes from
+the last committed episode. Keep the same image throughout the study. Run without
+other intensive experiments for comparable runtime measurements.
+
+Outputs are under `results/eight-city-publication/`:
+
+- `evaluation/report/publication_report.pdf`: comprehensive measured-results report.
+- `evaluation/report/index.html`: all-method tables and figures.
+- `evaluation/report/results_section.tex`: measured results text for manuscript integration.
+- `evaluation/report/setting_means.csv`, `setting_city_means.csv`, `between_city_sd.csv`: detailed comparisons.
+- `training_manifest.json` and each training-stage directory: checkpoints, budgets, logs and selection histories.
+- `../eight-city-publication.zip`: complete training and evaluation evidence package.
+
+The report preserves negative findings and limitations. It does not automatically
+certify an IEEE manuscript as submission-ready. Integrate the actual outcomes into
+the original paper and review its methods, references, and claims before submission.
+
+To exercise the entire workflow with short **synthetic software checks**:
+
+```bash
+docker compose run --rm ears-v9-train-all python tools/train_all_eight_city.py --smoke --profile core --output-root results/eight-city-pipeline-smoke
+```
+
+Use `--offline` to require existing cached maps, `--stop-after ears` to stop after
+training, or `--max-evaluation-jobs N` to pause testing. Use a fresh output root for
+a different profile or training study. The default historical evaluator below
+still requires its exact old checkpoint; a new training study is labelled and
+hash-locked separately rather than treated as a replication of that checkpoint.
+
 ### Controlled routing comparison
 
 The mechanism experiment compares four variants with the same checkpoint,

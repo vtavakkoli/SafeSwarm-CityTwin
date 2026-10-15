@@ -230,7 +230,11 @@ def _report(root):
         f"<h1>{html.escape(label)}</h1>"
         f"<p>{len(rows):,} episodes; {len(plan['cities'])} cities; 30 methods.</p>"
     )
-    body = "<ul>" + "".join(f"<li>{html.escape(f)}</li>" for f in flags) + "</ul>"
+    body = (
+        '<p><a href="publication_report.pdf">Comprehensive PDF report</a> | '
+        '<a href="results_section.tex">LaTeX results section</a></p>'
+    )
+    body += "<ul>" + "".join(f"<li>{html.escape(f)}</li>" for f in flags) + "</ul>"
     body += (
         f"<h2>Primary comparison</h2><p>Mean difference {primary.delta:+.6f}; "
         f"exact city p={primary.p_two_sided:.6f}. Descriptive bootstrap interval "
@@ -269,6 +273,9 @@ def _report(root):
             changed_swap_cities=sorted(set(views.loc[views.city_eligible_changed_swap, "city"])),
         ),
     )
+    from tools.publication_report_eight_city import write_report
+
+    write_report(root, plan, frame, summary, city, tests)
     atomic_json(
         root / "completion.json",
         dict(
