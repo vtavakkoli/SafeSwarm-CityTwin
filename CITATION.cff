@@ -5,6 +5,8 @@ type: software
 version: 2.0.0
 date-released: 2026-08-03
 authors:
+  - family-names: Mohsenzadegan
+    given-names: Kabeh
   - family-names: Tavakkoli
     given-names: Vahid
 repository-code: "https://github.com/vtavakkoli/SafeSwarm-CityTwin"
